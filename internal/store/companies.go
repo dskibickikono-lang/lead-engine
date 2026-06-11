@@ -44,6 +44,28 @@ func scanCompany(row *sql.Row) (*Company, error) {
 	return &c, nil
 }
 
+// queryCompanies executes query with args, scans all rows using the 17-column
+// companyCols layout, and returns the slice. Used by CompaniesPendingNIP and
+// CompaniesNeedingEnrichment to share the scan loop.
+func (s *Store) queryCompanies(query string, args ...any) ([]Company, error) {
+	rows, err := s.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Company
+	for rows.Next() {
+		var c Company
+		if err := rows.Scan(&c.ID, &c.NIP, &c.Name, &c.NormalizedName, &c.NIPStatus,
+			&c.Address, &c.REGON, &c.KRS, &c.LegalForm, &c.PKDMain, &c.CompanySize,
+			&c.Website, &c.Email, &c.Phone, &c.BoardMembers, &c.FirstSeen, &c.LastSeen); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) FindCompanyByNIP(nip string) (*Company, error) {
 	return scanCompany(s.DB.QueryRow(
 		`SELECT `+companyCols+` FROM companies WHERE nip = ?`, nip))

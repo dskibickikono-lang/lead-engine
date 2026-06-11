@@ -1,23 +1,8 @@
 package store
 
 func (s *Store) CompaniesPendingNIP() ([]Company, error) {
-	rows, err := s.DB.Query(`SELECT ` + companyCols + ` FROM companies
+	return s.queryCompanies(`SELECT ` + companyCols + ` FROM companies
 		WHERE nip_status = 'pending' ORDER BY id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Company
-	for rows.Next() {
-		var c Company
-		if err := rows.Scan(&c.ID, &c.NIP, &c.Name, &c.NormalizedName, &c.NIPStatus,
-			&c.Address, &c.REGON, &c.KRS, &c.LegalForm, &c.PKDMain, &c.CompanySize,
-			&c.Website, &c.Email, &c.Phone, &c.BoardMembers, &c.FirstSeen, &c.LastSeen); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
 }
 
 func (s *Store) MarkCompanyUnresolved(id int64) error {
@@ -49,4 +34,13 @@ func (s *Store) FillCompanyFields(id int64, f map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// CompaniesNeedingEnrichment returns verified companies missing any
+// enrichment field that the free APIs can supply.
+func (s *Store) CompaniesNeedingEnrichment() ([]Company, error) {
+	return s.queryCompanies(`SELECT ` + companyCols + ` FROM companies
+		WHERE nip_status = 'verified'
+		  AND (phone='' OR email='' OR website='' OR address='' OR krs='' OR regon='' OR board_members='')
+		ORDER BY id`)
 }
