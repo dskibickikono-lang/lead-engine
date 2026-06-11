@@ -16,7 +16,7 @@ import (
 
 type Stage struct {
 	Name string
-	Fn   func(ctx context.Context) error
+	Fn   func(ctx context.Context, runID int64) error
 }
 
 type Runner struct {
@@ -47,7 +47,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			continue
 		}
 		log.Printf("stage %s: start", stage.Name)
-		if err := stage.Fn(ctx); err != nil {
+		if err := stage.Fn(ctx, runID); err != nil {
 			log.Printf("stage %s: FAILED: %v", stage.Name, err)
 			r.Store.RecordStage(runID, stage.Name, "failed", err.Error())
 			failures = append(failures, fmt.Sprintf("%s: %v", stage.Name, err))
@@ -68,7 +68,7 @@ func (r *Runner) Run(ctx context.Context) error {
 // Note: this execs the binary directly (no shell) — wrapper scripts need
 // a shebang and the execute bit.
 func ScraperStage(name string, cmd []string, exportPath string) Stage {
-	return Stage{Name: name, Fn: func(ctx context.Context) error {
+	return Stage{Name: name, Fn: func(ctx context.Context, _ int64) error {
 		if len(cmd) == 0 {
 			return fmt.Errorf("%s: no command configured", name)
 		}

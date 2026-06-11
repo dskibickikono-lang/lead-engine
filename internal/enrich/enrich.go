@@ -31,6 +31,9 @@ type Stats struct {
 // is retried on the next run.
 func Enrich(ctx context.Context, st *store.Store, rg RegonLookup, kc KRSLookup) (Stats, error) {
 	var stats Stats
+	if _, err := FillFromGovExtras(st); err != nil {
+		return stats, fmt.Errorf("enrich: gov extras: %w", err)
+	}
 	companies, err := st.CompaniesNeedingEnrichment()
 	if err != nil {
 		return stats, fmt.Errorf("enrich: %w", err)

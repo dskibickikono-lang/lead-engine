@@ -1,8 +1,11 @@
 package store
 
+// CompaniesPendingNIP returns pending or previously-unresolved companies;
+// unresolved ones are retried because cached lookups make retries free within
+// the cache TTL.
 func (s *Store) CompaniesPendingNIP() ([]Company, error) {
 	return s.queryCompanies(`SELECT ` + companyCols + ` FROM companies
-		WHERE nip_status = 'pending' ORDER BY id`)
+		WHERE nip_status IN ('pending','unresolved') ORDER BY id`)
 }
 
 func (s *Store) MarkCompanyUnresolved(id int64) error {

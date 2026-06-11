@@ -4,6 +4,7 @@ package enrich
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -90,14 +91,35 @@ func ResolveNIPs(ctx context.Context, st *store.Store, bz *bizraport.Client, cfg
 // resolveByName mirrors the olx module's resolveProfile: bounded paid
 // search, then verify the registry name matches before trusting a hit.
 // Returns the profile (nil if no confident match) and the number of
-// billable rows consumed.
+// billable rows consumed. Both the search result list and each per-KRS
+// profile are cached so that retries of unresolved companies are free
+// within the cache TTL.
 func resolveByName(ctx context.Context, st *store.Store, bz *bizraport.Client, name string, maxCandidates int) (*bizraport.CompanyProfile, int, error) {
-	krsList, _, err := bz.Search(ctx, name, maxCandidates)
-	if err != nil {
-		return nil, 0, err
+	normalizedName := match.Normalize(name)
+	paid := 0
+
+	// Try to load the search result list from cache.
+	var krsList []string
+	if raw, ok, _ := st.CacheGet("bizraport-search", normalizedName, cacheTTL); ok {
+		// Cache hit — search results are free.
+		_ = json.Unmarshal(raw, &krsList)
+	} else {
+		// Cache miss — call the paid API.
+		var err error
+		krsList, _, err = bz.Search(ctx, name, maxCandidates)
+		if err != nil {
+			return nil, 0, err
+		}
+		paid = len(krsList) // /api/szukaj bills per returned row
+		// Cache even an empty result: a definitive "no candidates" answer
+		// must not be re-billed daily.
+		if b, merr := json.Marshal(krsList); merr == nil {
+			st.CachePut("bizraport-search", normalizedName, b)
+		}
 	}
-	paid := len(krsList) // /api/szukaj bills per returned row
-	want := match.Normalize(name)
+
+	want := normalizedName
+	var err error
 	for _, krs := range krsList {
 		var p *bizraport.CompanyProfile
 		if raw, ok, _ := st.CacheGet("bizraport-krs", krs, cacheTTL); ok {

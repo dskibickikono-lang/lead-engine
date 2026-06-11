@@ -7,6 +7,7 @@ import (
 
 	"github.com/hrkono/lead-engine/internal/enrich/krs"
 	"github.com/hrkono/lead-engine/internal/enrich/regon"
+	"github.com/hrkono/lead-engine/internal/store"
 )
 
 // regonStub/krsStub satisfy the two lookup interfaces without HTTP.
@@ -112,5 +113,62 @@ func TestEnrichCachesEmptyBoard(t *testing.T) {
 	}
 	if stub.calls != 1 {
 		t.Errorf("total KRS stub calls = %d, want exactly 1 (cached in run1)", stub.calls)
+	}
+}
+
+// TestFillFromGovExtras verifies that pkd_main is populated from the
+// extra.regon block carried in the cbop offer payload, without a live REGON
+// API call — so the PKD-77/78 agency filter never depends on the API.
+func TestFillFromGovExtras(t *testing.T) {
+	st := testStore(t)
+
+	// Create a verified company with no PKD yet.
+	id, err := st.CreateCompany("1234567890", "Stalmet Sp. z o.o.", "stalmet", "verified")
+	if err != nil {
+		t.Fatalf("CreateCompany: %v", err)
+	}
+
+	// Build a cbop offer payload matching the gov_api export schema:
+	// extra.regon keys are pkdMain, companySize, legalForm.
+	payload := `{"externalId":"cbop:abc123","companyName":"Stalmet Sp. z o.o.","extra":{"qualified":true,"regon":{"pkdMain":"78.20.Z","companySize":"50","legalForm":"sp. z o.o."}}}`
+
+	if err := st.UpsertRawOffer(store.RawOffer{
+		Source:      "cbop",
+		ExternalID:  "cbop:abc123",
+		NIP:         "1234567890",
+		CompanyName: "Stalmet Sp. z o.o.",
+		Vacancies:   1,
+		Payload:     payload,
+	}); err != nil {
+		t.Fatalf("UpsertRawOffer: %v", err)
+	}
+	if err := st.AttachOffer("cbop", "cbop:abc123", id); err != nil {
+		t.Fatalf("AttachOffer: %v", err)
+	}
+
+	// Run Enrich with stubs that supply NO PKD from the REGON API — pkd_main
+	// must still be populated from the payload's extra.regon block.
+	_, err = Enrich(context.Background(), st,
+		regonStub{rep: &regon.Report{REGON: "123456785", KRS: "0000123456",
+			Phone: "221112233", Email: "biuro@stalmet.example",
+			Website: "stalmet.example", Address: "Prosta 1, 00-001 Warszawa"}},
+		krsStub{board: nil},
+	)
+	if err != nil {
+		t.Fatalf("Enrich: %v", err)
+	}
+
+	c, err := st.FindCompanyByNIP("1234567890")
+	if err != nil || c == nil {
+		t.Fatalf("FindCompanyByNIP: %v (company=%v)", err, c)
+	}
+	if c.PKDMain != "78.20.Z" {
+		t.Errorf("pkd_main = %q, want \"78.20.Z\" (from extra.regon, not REGON API)", c.PKDMain)
+	}
+	if c.CompanySize != "50" {
+		t.Errorf("company_size = %q, want \"50\"", c.CompanySize)
+	}
+	if c.LegalForm != "sp. z o.o." {
+		t.Errorf("legal_form = %q, want \"sp. z o.o.\"", c.LegalForm)
 	}
 }

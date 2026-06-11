@@ -167,7 +167,8 @@ func TestResolveCacheHitDoesNotRebill(t *testing.T) {
 		t.Errorf("run1: /api/dane hit %d times, want 1", daneAfterRun1)
 	}
 
-	// Run 2: second company with same normalized name; profile served from cache.
+	// Run 2: second company with same normalized name; both search and profile
+	// served from cache — /api/szukaj must not be called again either.
 	// "STALMET sp. z o.o." normalizes identically to "stalmet".
 	st.CreateCompany("", "STALMET sp. z o.o.", "stalmet", "pending")
 	stats2, err := ResolveNIPs(context.Background(), st, bz, cfg)
@@ -178,17 +179,24 @@ func TestResolveCacheHitDoesNotRebill(t *testing.T) {
 		t.Errorf("run2: Resolved = %d, want 1 (merge path)", stats2.Resolved)
 	}
 
-	// /api/dane must not have been called again — cache served the profile.
+	// /api/szukaj must not have been called again — search result is cached.
+	szukajAfterRun2 := ch.Count("/api/szukaj")
+	if szukajAfterRun2 != 1 {
+		t.Errorf("/api/szukaj total hits = %d, want exactly 1 (cache should have served run2 search)", szukajAfterRun2)
+	}
+
+	// /api/dane must not have been called again — profile is cached.
 	daneAfterRun2 := ch.Count("/api/dane")
 	if daneAfterRun2 != 1 {
 		t.Errorf("/api/dane total hits = %d, want exactly 1 (cache should have served run2)", daneAfterRun2)
 	}
 
-	// Total spend: run1=1.0 (1 search + 1 profile), run2=0.5 (1 search only, profile cached).
+	// Total spend stays at run-1's level: both search and profile were cached
+	// for run 2, so no new rows were billed.
 	totalSpend, _ := st.SpendToday("bizraport")
-	const wantTotalSpend = 1.5
+	const wantTotalSpend = 1.0
 	if totalSpend != wantTotalSpend {
-		t.Errorf("total spend = %v, want %v", totalSpend, wantTotalSpend)
+		t.Errorf("total spend = %v, want %v (run2 fully cached, no new billing)", totalSpend, wantTotalSpend)
 	}
 }
 
@@ -227,16 +235,21 @@ func TestResolveUnresolvedStillBilled(t *testing.T) {
 		t.Errorf("Unresolved = %d, want 1", stats.Unresolved)
 	}
 
-	// Company should be marked unresolved.
+	// Company should be marked unresolved — mismatched NIP must NOT be saved.
 	c, err := st.FindCompanyByNIP("9999999999")
 	if c != nil {
 		t.Errorf("mismatched NIP should not have been saved; got company %+v", c)
 	}
-	// Check by ID that nip_status is 'unresolved'.
+	// Check by ID that nip_status is 'unresolved' (not 'pending').
+	// Note: CompaniesPendingNIP also returns 'unresolved' rows (for retry),
+	// so we verify the status directly rather than absence from that list.
 	companies, _ := st.CompaniesPendingNIP()
 	for _, co := range companies {
 		if co.ID == id {
-			t.Errorf("company %d still in pending after unresolved run", id)
+			if co.NIPStatus != "unresolved" {
+				t.Errorf("company %d has nip_status=%q after unresolved run, want 'unresolved'", id, co.NIPStatus)
+			}
+			break
 		}
 	}
 	_ = err
@@ -250,6 +263,75 @@ func TestResolveUnresolvedStillBilled(t *testing.T) {
 	const wantSpend = 1.0
 	if spent != wantSpend {
 		t.Errorf("spend = %v, want %v (1 search + 1 profile row)", spent, wantSpend)
+	}
+}
+
+func TestResolveRetriesUnresolved(t *testing.T) {
+	// Server returns a profile whose nazwa does NOT match → unresolved on run 1.
+	mismatchHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/szukaj":
+			fmt.Fprint(w, `{"data":[{"krs":"0000999999"}],"dane_uciete":false}`)
+		case "/api/dane":
+			fmt.Fprint(w, `{"data":[{
+				"krs":"0000999999",
+				"nip":"9999999999",
+				"informacje_o_firmie":[
+					{"nazwa_pola":"nazwa","wartosc":"Inna Firma Sp. z o.o."}
+				]
+			}]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	ch := newCountingHandler(mismatchHandler)
+	srv := httptest.NewServer(ch)
+	defer srv.Close()
+	st := testStore(t)
+
+	cfg := ResolveConfig{DailyCapPLN: 10, CostPerRowPLN: 0.5, MaxCandidates: 5}
+	bz := bizraport.New(bizraport.Options{BaseURL: srv.URL, Email: "x", Password: "y"})
+
+	// Run 1: company gets nip_status='unresolved'; spend = 1 search + 1 profile = 1.0 PLN.
+	id, _ := st.CreateCompany("", "Stalmet sp. z o.o.", "stalmet", "pending")
+	stats1, err := ResolveNIPs(context.Background(), st, bz, cfg)
+	if err != nil {
+		t.Fatalf("run1 ResolveNIPs: %v", err)
+	}
+	if stats1.Unresolved != 1 {
+		t.Errorf("run1: Unresolved = %d, want 1", stats1.Unresolved)
+	}
+	spend1, _ := st.SpendToday("bizraport")
+	const wantSpend1 = 1.0
+	if spend1 != wantSpend1 {
+		t.Errorf("run1 spend = %v, want %v", spend1, wantSpend1)
+	}
+	szukajAfterRun1 := ch.Count("/api/szukaj")
+	daneAfterRun1 := ch.Count("/api/dane")
+	_ = id
+
+	// Run 2: company must be selected again (spec: unresolved retried next run).
+	// Both search and profile come from cache — no new HTTP requests, no new spend.
+	stats2, err := ResolveNIPs(context.Background(), st, bz, cfg)
+	if err != nil {
+		t.Fatalf("run2 ResolveNIPs: %v", err)
+	}
+	if stats2.Unresolved != 1 {
+		t.Errorf("run2: Unresolved = %d, want 1 (still unresolved, cached)", stats2.Unresolved)
+	}
+
+	// HTTP server must have seen no new requests in run 2.
+	if ch.Count("/api/szukaj") != szukajAfterRun1 {
+		t.Errorf("/api/szukaj: %d hits after run2, want %d (cached)", ch.Count("/api/szukaj"), szukajAfterRun1)
+	}
+	if ch.Count("/api/dane") != daneAfterRun1 {
+		t.Errorf("/api/dane: %d hits after run2, want %d (cached)", ch.Count("/api/dane"), daneAfterRun1)
+	}
+
+	// Spend must not have increased.
+	spend2, _ := st.SpendToday("bizraport")
+	if spend2 != wantSpend1 {
+		t.Errorf("run2 spend = %v, want %v (no new billing from cache)", spend2, wantSpend1)
 	}
 }
 

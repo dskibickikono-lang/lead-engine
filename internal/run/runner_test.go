@@ -22,9 +22,12 @@ func testStore(t *testing.T) *store.Store {
 func TestRunnerRecordsStagesAndResumes(t *testing.T) {
 	st := testStore(t)
 	calls := map[string]int{}
+	// seenRunIDs collects the runID passed to each stage invocation.
+	var seenRunIDs []int64
 	mk := func(name string, fail bool) Stage {
-		return Stage{Name: name, Fn: func(ctx context.Context) error {
+		return Stage{Name: name, Fn: func(ctx context.Context, runID int64) error {
 			calls[name]++
+			seenRunIDs = append(seenRunIDs, runID)
 			if fail {
 				return errors.New("boom")
 			}
@@ -40,10 +43,20 @@ func TestRunnerRecordsStagesAndResumes(t *testing.T) {
 	if calls["a"] != 1 || calls["b"] != 1 || calls["c"] != 1 {
 		t.Errorf("calls = %v (failures must not stop later stages)", calls)
 	}
+	// All three stages of run 1 must receive a non-zero, identical runID.
+	if len(seenRunIDs) != 3 {
+		t.Fatalf("expected 3 runID observations, got %d", len(seenRunIDs))
+	}
+	if seenRunIDs[0] == 0 {
+		t.Errorf("runID passed to stages must be non-zero, got %d", seenRunIDs[0])
+	}
+	if seenRunIDs[0] != seenRunIDs[1] || seenRunIDs[1] != seenRunIDs[2] {
+		t.Errorf("runID must be equal across stages of one run: %v", seenRunIDs)
+	}
 
 	// Resume: a and c completed, only b re-runs.
 	r2 := &Runner{Store: st, Stages: []Stage{mk("a", false), mk("b", false), mk("c", false)}, Resume: true}
-	r2.Stages[1].Fn = func(ctx context.Context) error { calls["b"]++; return nil }
+	r2.Stages[1].Fn = func(ctx context.Context, runID int64) error { calls["b"]++; return nil }
 	if err := r2.Run(context.Background()); err != nil {
 		t.Fatalf("resume run: %v", err)
 	}
@@ -56,7 +69,7 @@ func TestResumeAfterSuccessRunsEverything(t *testing.T) {
 	st := testStore(t)
 	calls := map[string]int{}
 	mk := func(name string, fail bool) Stage {
-		return Stage{Name: name, Fn: func(ctx context.Context) error {
+		return Stage{Name: name, Fn: func(ctx context.Context, _ int64) error {
 			calls[name]++
 			if fail {
 				return errors.New("boom")
