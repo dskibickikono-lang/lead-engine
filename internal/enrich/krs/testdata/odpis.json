@@ -1,0 +1,23 @@
+{
+  "odpis": {
+    "naglowekA": {"numerKRS": "0000123456"},
+    "dane": {
+      "dzial2": {
+        "reprezentacja": {
+          "sklad": [
+            {
+              "nazwisko": {"nazwiskoICzlon": "KOWALSKI"},
+              "imiona": {"imie": "JAN"},
+              "funkcjaWOrganie": "PREZES ZARZĄDU"
+            },
+            {
+              "nazwisko": {"nazwiskoICzlon": "NOWAK"},
+              "imiona": {"imie": "ANNA"},
+              "funkcjaWOrganie": "CZŁONEK ZARZĄDU"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
