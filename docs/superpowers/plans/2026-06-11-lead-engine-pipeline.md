@@ -3262,6 +3262,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestSignalSend(t *testing.T) {
@@ -3293,6 +3294,17 @@ func TestSignalSend(t *testing.T) {
 	}
 	if len(got) != 3 {
 		t.Errorf("parts = %d, want 3", len(got))
+	}
+
+	// Polish (multi-byte) text: no part may end mid-rune.
+	got = nil
+	if err := c.Send(context.Background(), "a"+strings.Repeat("ł", 4500)); err != nil {
+		t.Fatal(err)
+	}
+	for i, m := range got {
+		if !utf8.ValidString(m["message"].(string)) {
+			t.Errorf("part %d is not valid UTF-8", i)
+		}
 	}
 }
 
@@ -3333,6 +3345,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"unicode/utf8"
 )
 
 const signalMaxPart = 4000
@@ -3366,8 +3379,16 @@ func splitMessage(msg string, max int) []string {
 	var parts []string
 	for len(msg) > 0 {
 		n := max
-		if n > len(msg) {
+		if n >= len(msg) {
 			n = len(msg)
+		} else {
+			// Never split a multi-byte UTF-8 rune across parts.
+			for n > 0 && !utf8.RuneStart(msg[n]) {
+				n--
+			}
+			if n == 0 {
+				n = max
+			}
 		}
 		parts = append(parts, msg[:n])
 		msg = msg[n:]
@@ -4395,7 +4416,9 @@ func (s *Store) MarkLeadDelivered(leadID int64, channel string, orgID, dealID in
 ```go
 func leadView(l store.DeliverableLead) deliver.LeadView {
 	var board []krs.BoardMember
-	json.Unmarshal([]byte(l.Company.BoardMembers), &board)
+	if l.Company.BoardMembers != "" {
+		_ = json.Unmarshal([]byte(l.Company.BoardMembers), &board)
+	}
 	var boardStr []string
 	for _, m := range board {
 		boardStr = append(boardStr, m.Name+" ("+m.Role+")")
@@ -4409,7 +4432,9 @@ func leadView(l store.DeliverableLead) deliver.LeadView {
 
 func pipedriveLead(l store.DeliverableLead) deliver.PipedriveLead {
 	var board []krs.BoardMember
-	json.Unmarshal([]byte(l.Company.BoardMembers), &board)
+	if l.Company.BoardMembers != "" {
+		_ = json.Unmarshal([]byte(l.Company.BoardMembers), &board)
+	}
 	var boardStr []string
 	for _, m := range board {
 		boardStr = append(boardStr, m.Name+" ("+m.Role+")")
@@ -4488,7 +4513,7 @@ excluded_pkd_prefixes = ["77", "78"]
 [scrapers]
 gov_cmd = ["/opt/gov_api/venv/bin/python", "/opt/gov_api/main.py", "--voivodeships", "14,30,24"]
 gov_export = "/opt/gov_api/exports/raw-leads-cbop-latest.json"
-olx_cmd = ["/opt/olx-printing-press/bin/olx-pp-cli", "sync"]
+olx_cmd = ["/opt/olx-printing-press/bin/sync-and-export.sh"]
 olx_export = "/opt/olx-printing-press/data/exports/raw-leads-olx-latest.json"
 
 [bizraport]
@@ -4513,7 +4538,7 @@ stage_id = 0
 # filled in by: lead-engine pipedrive setup
 ```
 
-Note: the olx scraper needs *two* commands (sync, then export). Wrap them in `olx_cmd` via a one-line shell script on the VPS (`/opt/olx-printing-press/bin/sync-and-export.sh` running `olx-pp-cli sync && olx-pp-cli export --kind raw-leads --format json --out .../raw-leads-olx-latest.json`); same pattern for gov if its export needs an extra step. Document this in DEPLOY.md.
+Note: the olx scraper needs *two* commands (sync, then export), so `olx_cmd` points at the wrapper script `/opt/olx-printing-press/bin/sync-and-export.sh` (DEPLOY.md §4); same pattern for gov if its export ever needs an extra step. `exec.Command` does **not** invoke a shell — the wrapper must have a `#!/bin/sh` shebang and the execute bit, or the run fails with `exec format error` / `permission denied`.
 
 `docs/DEPLOY.md`:
 
@@ -4546,6 +4571,9 @@ Paste the printed [pipedrive.field_keys] block into the config.
   /opt/olx-printing-press/bin/olx-pp-cli sync
   /opt/olx-printing-press/bin/olx-pp-cli export --kind raw-leads --format json \
     --out /opt/olx-printing-press/data/exports/raw-leads-olx-latest.json
+
+Make it executable (lead-engine execs it directly, without a shell):
+  chmod +x /opt/olx-printing-press/bin/sync-and-export.sh
 
 ## 5. Cron (the single entry point)
   0 5 * * * /opt/lead-engine/bin/lead-engine run --config /etc/lead-engine/config.toml >> /var/log/lead-engine/run.log 2>&1
