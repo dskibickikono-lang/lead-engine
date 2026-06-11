@@ -55,3 +55,17 @@ func TestLoadRequiresDBPath(t *testing.T) {
 		t.Fatal("expected error for missing db_path")
 	}
 }
+
+func TestLoadRejectsBizraportWithoutCap(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	os.WriteFile(p, []byte(`
+db_path = "/tmp/leads.db"
+[bizraport]
+email = "x@y.z"
+password = "secret"
+`), 0o644)
+	if _, err := Load(p); err == nil {
+		t.Fatal("expected error: credentials without cap config")
+	}
+}

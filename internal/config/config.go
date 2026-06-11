@@ -68,6 +68,11 @@ func Load(path string) (*Config, error) {
 	if cfg.DBPath == "" {
 		return nil, fmt.Errorf("config: db_path is required")
 	}
+	if cfg.Bizraport.Email != "" || cfg.Bizraport.Password != "" {
+		if cfg.Bizraport.DailyCapPLN <= 0 || cfg.Bizraport.CostPerRowPLN <= 0 {
+			return nil, fmt.Errorf("config: bizraport credentials set but daily_cap_pln/cost_per_row_pln missing — the daily cap would be disabled")
+		}
+	}
 	if cfg.Bizraport.MaxCandidates == 0 {
 		cfg.Bizraport.MaxCandidates = 5
 	}
