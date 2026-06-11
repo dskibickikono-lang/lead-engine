@@ -1,0 +1,22 @@
+{
+  "contractVersion": 1,
+  "source": "cbop",
+  "exportedAt": "2026-06-10T05:10:00Z",
+  "offers": [
+    {
+      "externalId": "cbop:abc123",
+      "nip": "1234567890",
+      "companyName": "Stalmet Sp. z o.o.",
+      "position": "Operator maszyn CNC",
+      "location": "Warszawa",
+      "vacancies": 8,
+      "salaryFrom": 4500,
+      "salaryTo": 6000,
+      "phone": "+48221112233",
+      "email": "hr@stalmet.example",
+      "score": 98,
+      "scrapedAt": "2026-06-10T05:00:00Z",
+      "extra": {"qualified": true, "regon": {"pkdMain": "29.10.Z"}}
+    }
+  ]
+}

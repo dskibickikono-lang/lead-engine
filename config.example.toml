@@ -1,0 +1,31 @@
+db_path = "/opt/lead-engine/data/leads.db"
+suppression_days = 30
+score_threshold = 50
+excluded_pkd_prefixes = ["77", "78"]
+
+[scrapers]
+gov_cmd = ["/opt/gov_api/venv/bin/python", "/opt/gov_api/main.py", "--voivodeships", "14,30,24"]
+gov_export = "/opt/gov_api/exports/raw-leads-cbop-latest.json"
+olx_cmd = ["/opt/olx-printing-press/bin/sync-and-export.sh"]
+olx_export = "/opt/olx-printing-press/data/exports/raw-leads-olx-latest.json"
+
+[bizraport]
+email = ""
+password = ""
+daily_cap_pln = 10.0
+cost_per_row_pln = 0.5
+max_candidates = 5
+
+[regon]
+api_key = ""
+
+[signal]
+api_url = "http://127.0.0.1:8080"
+number = "+48000000000"
+group_id = "group.xxxx"
+
+[pipedrive]
+api_token = ""
+stage_id = 0
+[pipedrive.field_keys]
+# filled in by: lead-engine pipedrive setup
