@@ -124,6 +124,9 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("init schema: %w", err)
 	}
+	// Single sequential writer; one connection avoids SQLITE_BUSY between
+	// statements and keeps WAL checkpointing simple.
+	db.SetMaxOpenConns(1)
 	return &Store{DB: db}, nil
 }
 
