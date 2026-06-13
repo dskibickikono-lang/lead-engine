@@ -23,13 +23,20 @@ lead-engine pipedrive setup --config /etc/lead-engine/config.toml
 ```
 Paste the printed [pipedrive.field_keys] block into the config.
 
-## 3. Build & install
+## 3. Clone & setup (development / CI)
+```
+git clone --recurse-submodules https://github.com/dskibickikono-lang/lead-engine.git
+# or after a plain git pull:
+make setup   # runs: git submodule update --init --recursive
+```
+
+## 4. Build & install
 ```
 GOOS=linux GOARCH=amd64 go build -o bin/lead-engine ./cmd/lead-engine
 scp bin/lead-engine user@vps:/opt/lead-engine/bin/
 ```
 
-## 4. Scraper wrapper scripts
+## 5. Scraper wrapper scripts
 `/opt/olx-printing-press/bin/sync-and-export.sh`:
 ```sh
 #!/bin/sh
@@ -44,14 +51,14 @@ Make it executable (lead-engine execs it directly, without a shell):
 chmod +x /opt/olx-printing-press/bin/sync-and-export.sh
 ```
 
-## 5. Cron (the single entry point)
+## 6. Cron (the single entry point)
 ```
 0 5 * * * /opt/lead-engine/bin/lead-engine run --config /etc/lead-engine/config.toml >> /var/log/lead-engine/run.log 2>&1
 ```
 05:00: CBOP fetch window is 17:00–07:00 and the digest must precede the workday.
 Set MAILTO in the crontab for failure alerts (non-zero exit on any stage failure).
 
-## 6. Smoke test
+## 7. Smoke test
 ```
 lead-engine run --config config.toml --skip-scrape --dry-run
 ```
