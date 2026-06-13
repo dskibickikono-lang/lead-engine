@@ -12,7 +12,7 @@ However, there are a few architectural rough edges:
 - **Contract Drift:** The `v1` JSON contract between scrapers and the orchestrator relies on file exports. If a scraper's output schema changes or drifts, the orchestrator might fail during ingestion without early warning.
 
 ### 2. What Was Done Well
-- **Resilient Runner:** The `internal/run/runner.go` is well-designed. It records stage outcomes in SQLite (`run_stages`) and supports resuming from the last failed stage. Failures are aggregated and do not stop the pipeline immediately. This is a critical operational feature for a daily cron job.
+- **Resilient Runner:** The `internal/run/runner.go` is well-designed. It records stage outcomes in SQLite (`run_stages`) and supports resuming from the last failed stage. Failed stages are aggregated into a `failures` list and the loop continues (`continue`, not `return`), so subsequent stages still execute on whatever data exists; the run then returns a single combined error at the end so the cron job alerts. This graceful-degradation pattern is more resilient than a fail-fast loop and is a critical operational feature for a daily cron job.
 - **Cost Controls:** The BizRaport API integration (`internal/enrich/resolve.go`) includes a daily spend cap (`DailyCapPLN`). This is an excellent, production-ready pattern that prevents unbounded billing.
 - **Idempotency & Deduplication:** The ingestion and matching logic (`internal/ingest` and `internal/match`) uses SQLite upserts and NIP/normalized name deduplication. This safely handles duplicate scraper runs and overlapping data.
 - **Caching Strategy:** The API response caching (`internal/store/cache.go`) uses a generic `api_cache` table, which is an effective way to minimize external API calls (REGON, KRS, BizRaport) and save costs/avoid rate limits.
@@ -50,7 +50,7 @@ However, there are a few architectural rough edges:
 - **Forward Compatibility:** The `Extra map[string]any` field allows passing arbitrary data without breaking parsing. This is a very smart forward-compatibility choice.
 
 #### Go Orchestrator
-- **Ingestion:** `ingest.Ingest` is clean, but it marshals the entire `Offer` into a JSON string (`Payload`) in the DB. This duplicates data already stored in columns. If `Payload` serves as a "raw backup", it should be a documented design decision.
+- **Ingestion:** `ingest.Ingest` has two issues. First, `payload, _ := json.Marshal(o)` silently discards the marshal error with `_`; on a marshal failure the offer would be stored with an empty `Payload` and no signal that anything went wrong. Second, it marshals the entire `Offer` into a JSON string (`Payload`) in the DB, duplicating data already stored in dedicated columns. If `Payload` is intended as a "raw backup", that should be a documented design decision; the silent error suppression should be handled regardless.
 - **Error Handling:** `mustExec` in tests is fine, but in production code, errors are generally wrapped well (`fmt.Errorf("...: %w", err)`).
 
 #### Python Scraper
