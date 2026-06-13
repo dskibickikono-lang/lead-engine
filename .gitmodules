@@ -1,0 +1,6 @@
+[submodule "gov_api"]
+	path = gov_api
+	url = git@github.com:dskibickikono-lang/gov_api.git
+[submodule "olx-printing-press"]
+	path = olx-printing-press
+	url = git@github.com:dskibickikono-lang/olx-printing-press.git
