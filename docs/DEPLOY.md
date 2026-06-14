@@ -1,5 +1,8 @@
 # Deploy — lead-engine on the VPS
 
+> Before the first production run, complete [LIVE-INTEGRATION-CHECKLIST.md](LIVE-INTEGRATION-CHECKLIST.md)
+> — the live-system verifications (KRS fixture, REGON field casing, Pipedrive NIP searchability).
+
 ## 1. Signal infrastructure (one-time)
 ```
 docker run -d --name signal-api --restart=always \
