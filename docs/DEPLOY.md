@@ -39,19 +39,19 @@ GOOS=linux GOARCH=amd64 go build -o bin/lead-engine ./cmd/lead-engine
 scp bin/lead-engine user@vps:/opt/lead-engine/bin/
 ```
 
-## 5. Scraper wrapper scripts
-`/opt/olx-printing-press/bin/sync-and-export.sh`:
-```sh
-#!/bin/sh
-set -e
-/opt/olx-printing-press/bin/olx-pp-cli sync
-/opt/olx-printing-press/bin/olx-pp-cli export --kind raw-leads --format json \
-  --out /opt/olx-printing-press/data/exports/raw-leads-olx-latest.json
-```
+## 5. Scraper commands (no wrapper scripts)
+Both scrapers expose a single command that produces the raw-leads export, so
+`gov_cmd` / `olx_cmd` invoke the binary directly — `lead-engine` execs them
+without a shell, so no shebang or execute bit is involved.
 
-Make it executable (lead-engine execs it directly, without a shell):
+OLX combines sync + export in one subcommand (`config.example.toml`):
 ```
-chmod +x /opt/olx-printing-press/bin/sync-and-export.sh
+olx_cmd = ["/opt/olx-printing-press/bin/olx-pp-cli", "sync-and-export",
+           "--out", "/opt/olx-printing-press/data/exports/raw-leads-olx-latest.json"]
+```
+```
+/opt/olx-printing-press/bin/olx-pp-cli sync-and-export \
+  --out /opt/olx-printing-press/data/exports/raw-leads-olx-latest.json   # verify manually
 ```
 
 ## 6. Cron (the single entry point)

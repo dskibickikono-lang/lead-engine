@@ -6,7 +6,7 @@ excluded_pkd_prefixes = ["77", "78"]
 [scrapers]
 gov_cmd = ["/opt/gov_api/venv/bin/python", "/opt/gov_api/main.py", "--voivodeships", "14,30,24"]
 gov_export = "/opt/gov_api/exports/raw-leads-cbop-latest.json"
-olx_cmd = ["/opt/olx-printing-press/bin/sync-and-export.sh"]
+olx_cmd = ["/opt/olx-printing-press/bin/olx-pp-cli", "sync-and-export", "--out", "/opt/olx-printing-press/data/exports/raw-leads-olx-latest.json"]
 olx_export = "/opt/olx-printing-press/data/exports/raw-leads-olx-latest.json"
 
 [bizraport]
