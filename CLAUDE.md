@@ -155,8 +155,11 @@ already-created table.
   Pipedrive and **never** registry-enriched.
 - **`--dry-run` must have zero external side effects** and must not mutate lead
   state — keep it that way.
-- **`ScraperStage` execs the binary directly (no shell).** Wrapper scripts need a
-  shebang and the execute bit. cmd[0] is the binary, the rest are args.
+- **`ScraperStage` execs the binary directly (no shell).** `cmd[0]` is the binary,
+  the rest are args — both scrapers expose a single command that emits the export
+  (gov: `python main.py ...`; olx: `olx-pp-cli sync-and-export --out ...`), so no
+  wrapper script is needed. If you ever do point `*_cmd` at a `.sh`, it needs a
+  shebang and the execute bit.
 - Wrap errors with `fmt.Errorf("...: %w", err)` and context (stage/source/id), as
   the existing code does. No silent error swallowing.
 - Secrets (BizRaport, REGON, Pipedrive, Signal) live only in `config.toml` / env,
