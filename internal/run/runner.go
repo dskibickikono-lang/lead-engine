@@ -43,24 +43,37 @@ func (r *Runner) Run(ctx context.Context) error {
 	var failures []string
 	for _, stage := range r.Stages {
 		if skipDone[stage.Name] {
-			r.Store.RecordStage(runID, stage.Name, "ok", "skipped (resume)")
+			recordStage(r.Store, runID, stage.Name, "ok", "skipped (resume)")
 			continue
 		}
 		log.Printf("stage %s: start", stage.Name)
 		if err := stage.Fn(ctx, runID); err != nil {
 			log.Printf("stage %s: FAILED: %v", stage.Name, err)
-			r.Store.RecordStage(runID, stage.Name, "failed", err.Error())
+			recordStage(r.Store, runID, stage.Name, "failed", err.Error())
 			failures = append(failures, fmt.Sprintf("%s: %v", stage.Name, err))
 			continue
 		}
-		r.Store.RecordStage(runID, stage.Name, "ok", "")
+		recordStage(r.Store, runID, stage.Name, "ok", "")
 		log.Printf("stage %s: ok", stage.Name)
 	}
 	if len(failures) > 0 {
-		r.Store.FinishRun(runID, "failed")
+		if err := r.Store.FinishRun(runID, "failed"); err != nil {
+			// A lost 'failed' status leaves the run 'running', so --resume can't
+			// find it. Surface it rather than discarding.
+			log.Printf("run %d: recording failed status: %v", runID, err)
+		}
 		return fmt.Errorf("run %d: %d stage(s) failed: %v", runID, len(failures), failures)
 	}
 	return r.Store.FinishRun(runID, "ok")
+}
+
+// recordStage persists a stage's status, logging (rather than discarding) a
+// write error: a lost run_stages row desyncs --resume and would otherwise be
+// silent.
+func recordStage(st *store.Store, runID int64, name, status, detail string) {
+	if err := st.RecordStage(runID, name, status, detail); err != nil {
+		log.Printf("stage %s: recording %q status: %v", name, status, err)
+	}
 }
 
 // ScraperStage runs an external scraper command and verifies its export
