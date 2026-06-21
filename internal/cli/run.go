@@ -117,8 +117,8 @@ func runPipeline(ctx context.Context, cfg *config.Config, st *store.Store, dryRu
 			}, runID)
 			return err
 		}},
-		run.Stage{Name: "deliver", Fn: func(ctx context.Context, runID int64) error {
-			return deliverStage(ctx, cfg, st, runID, &stats, dryRun, cmd)
+		run.Stage{Name: "deliver", Fn: func(ctx context.Context, _ int64) error {
+			return deliverStage(ctx, cfg, st, &stats, dryRun, cmd)
 		}},
 	)
 
@@ -129,11 +129,11 @@ func runPipeline(ctx context.Context, cfg *config.Config, st *store.Store, dryRu
 // deliverStage renders the digest, sends Signal, pushes verified qualified
 // leads to Pipedrive, and records deliveries. In dry-run mode everything is
 // rendered to stdout and lead state is left untouched.
-func deliverStage(ctx context.Context, cfg *config.Config, st *store.Store, runID int64, stats *deliver.RunStats, dryRun bool, cmd *cobra.Command) error {
+func deliverStage(ctx context.Context, cfg *config.Config, st *store.Store, stats *deliver.RunStats, dryRun bool, cmd *cobra.Command) error {
 	spent, _ := st.SpendToday("bizraport")
 	stats.SpendPLN = spent
 
-	leads, err := st.DeliverableLeads(runID)
+	leads, err := st.DeliverableLeads()
 	if err != nil {
 		return err
 	}

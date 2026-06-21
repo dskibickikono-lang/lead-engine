@@ -38,9 +38,16 @@ func splitMessage(msg string, max int) []string {
 	if len(msg) <= max {
 		return []string{msg}
 	}
+	// Reserve room for the "(i/n)\n" prefix prepended below, so no emitted part
+	// exceeds max once the prefix is added. 12 bytes covers up to "(999/999)\n".
+	const prefixReserve = 12
+	chunk := max - prefixReserve
+	if chunk < 1 {
+		chunk = max
+	}
 	var parts []string
 	for len(msg) > 0 {
-		n := max
+		n := chunk
 		if n >= len(msg) {
 			n = len(msg)
 		} else {
@@ -48,8 +55,8 @@ func splitMessage(msg string, max int) []string {
 			for n > 0 && !utf8.RuneStart(msg[n]) {
 				n--
 			}
-			if n == 0 {
-				n = max
+			if n == 0 { // a single rune longer than chunk (pathological): hard-cut
+				n = chunk
 			}
 		}
 		parts = append(parts, msg[:n])
