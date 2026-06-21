@@ -100,6 +100,9 @@ func runPipeline(ctx context.Context, cfg *config.Config, st *store.Store, dryRu
 			if rs.SkippedBudget > 0 {
 				warn("bizraport: %d companies skipped (budget cap)", rs.SkippedBudget)
 			}
+			if rs.Errors > 0 {
+				warn("bizraport: %d companies failed resolution (retried next run)", rs.Errors)
+			}
 			return err
 		}},
 		run.Stage{Name: "enrich", Fn: func(ctx context.Context, _ int64) error {
