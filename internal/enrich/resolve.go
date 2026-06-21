@@ -28,6 +28,7 @@ type ResolveStats struct {
 	Resolved      int
 	Unresolved    int
 	SkippedBudget int
+	Errors        int // per-company lookup failures; the company is retried next run
 }
 
 // ResolveNIPs iterates over companies with nip_status='pending', queries
@@ -56,13 +57,21 @@ func ResolveNIPs(ctx context.Context, st *store.Store, bz *bizraport.Client, cfg
 			continue // company stays pending; retried tomorrow
 		}
 		profile, paidRows, err := resolveByName(ctx, st, bz, c.Name, cfg.MaxCandidates)
+		// Record any rows already billed before handling the error, so a paid
+		// call that failed mid-way is still accounted for. NOTE: spend is logged
+		// after the call returns — a crash in this window loses ≤ one company's
+		// billing record (bounded, accepted; see Phase-1 audit M2).
 		if paidRows > 0 {
 			if serr := st.AddSpend("bizraport", float64(paidRows)*cfg.CostPerRowPLN); serr != nil {
 				return stats, serr
 			}
 		}
 		if err != nil {
-			return stats, fmt.Errorf("resolve %q: %w", c.Name, err)
+			// Per-item API failure is non-blocking: count it, leave the company
+			// pending, and let the next run retry it. Never strand the rest of
+			// the batch because one BizRaport lookup failed.
+			stats.Errors++
+			continue
 		}
 		if profile == nil || profile.NIP == "" {
 			if err := st.MarkCompanyUnresolved(c.ID); err != nil {
@@ -72,7 +81,12 @@ func ResolveNIPs(ctx context.Context, st *store.Store, bz *bizraport.Client, cfg
 			continue
 		}
 		targetID := c.ID
-		if existing, _ := st.FindCompanyByNIP(profile.NIP); existing != nil && existing.ID != c.ID {
+		existing, ferr := st.FindCompanyByNIP(profile.NIP)
+		if ferr != nil {
+			stats.Errors++
+			continue
+		}
+		if existing != nil && existing.ID != c.ID {
 			if err := st.MergeCompanies(c.ID, existing.ID); err != nil {
 				return stats, err
 			}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -332,6 +333,52 @@ func TestResolveRetriesUnresolved(t *testing.T) {
 	spend2, _ := st.SpendToday("bizraport")
 	if spend2 != wantSpend1 {
 		t.Errorf("run2 spend = %v, want %v (no new billing from cache)", spend2, wantSpend1)
+	}
+}
+
+// TestResolveErrorIsNonBlocking proves a single company's BizRaport failure is
+// counted and skipped, and does NOT abort resolution for the rest of the batch
+// (CLAUDE.md: per-item failures are non-blocking).
+func TestResolveErrorIsNonBlocking(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/szukaj":
+			// The first company's name search hard-fails (non-retryable 400).
+			if strings.Contains(strings.ToLower(r.URL.Query().Get("q")), "failco") {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			fmt.Fprint(w, `{"data":[{"krs":"0000123456"}],"dane_uciete":false}`)
+		case "/api/dane":
+			writeStalmetResponse(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+	st := testStore(t)
+
+	// Failco errors on search; Stalmet must still resolve regardless of order.
+	st.CreateCompany("", "Failco sp. z o.o.", "failco", "pending")
+	stalmetID, _ := st.CreateCompany("", "Stalmet sp. z o.o.", "stalmet", "pending")
+
+	bz := bizraport.New(bizraport.Options{BaseURL: srv.URL, Email: "x", Password: "y"})
+	stats, err := ResolveNIPs(context.Background(), st, bz, ResolveConfig{
+		DailyCapPLN: 10, CostPerRowPLN: 0.5, MaxCandidates: 5,
+	})
+	if err != nil {
+		t.Fatalf("ResolveNIPs aborted the batch on one failure: %v", err)
+	}
+	if stats.Errors != 1 {
+		t.Errorf("Errors = %d, want 1 (Failco lookup failed)", stats.Errors)
+	}
+	if stats.Resolved != 1 {
+		t.Errorf("Resolved = %d, want 1 (Stalmet must resolve despite Failco failing)", stats.Resolved)
+	}
+	c, _ := st.FindCompanyByNIP("1234567890")
+	if c == nil || c.ID != stalmetID || c.NIPStatus != "verified" {
+		t.Fatalf("Stalmet not verified after a sibling company failed: %+v", c)
 	}
 }
 
