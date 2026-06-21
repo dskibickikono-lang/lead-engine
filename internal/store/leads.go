@@ -99,10 +99,17 @@ type DeliverableLead struct {
 }
 
 // DeliverableLeads returns all 'new' qualified leads plus 'new' unverified
-// leads (pending/unresolved NIP) for the given run, ordered by score desc then
-// company name. The phone and email columns fall back to an offer-level contact
-// when the company row has none — important for OLX-sourced unverified leads.
-func (s *Store) DeliverableLeads(runID int64) ([]DeliverableLead, error) {
+// leads (pending/unresolved NIP), ordered by score desc then company name. It is
+// intentionally run-agnostic: a lead left 'new' because a prior Signal send
+// failed must roll over into the next run's digest, so there is no run_id
+// filter. The phone and email columns fall back to an offer-level contact when
+// the company row has none — important for OLX-sourced unverified leads.
+//
+// Note: a below-threshold *verified* lead is created 'new'/qualified=0 and is
+// deliberately excluded here (not qualified, not unverified). Such rows stay
+// 'new' indefinitely — inert for delivery, but they accrete over time
+// (Phase-1 audit L6, accepted).
+func (s *Store) DeliverableLeads() ([]DeliverableLead, error) {
 	rows, err := s.DB.Query(`
 		SELECT l.id, l.positions, l.score, l.qualified,
 		       c.id, COALESCE(c.nip,''), c.name, c.normalized_name, c.nip_status,

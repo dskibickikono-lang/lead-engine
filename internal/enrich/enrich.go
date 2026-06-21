@@ -42,6 +42,7 @@ func Enrich(ctx context.Context, st *store.Store, rg RegonLookup, kc KRSLookup) 
 		if err := ctx.Err(); err != nil {
 			return stats, err
 		}
+		wrote := false // did this company actually gain registry data this run?
 		if c.Phone == "" || c.Email == "" || c.Website == "" || c.Address == "" || c.KRS == "" || c.REGON == "" {
 			rep, err := lookupRegonCached(ctx, st, rg, c.NIP)
 			if err != nil {
@@ -53,6 +54,7 @@ func Enrich(ctx context.Context, st *store.Store, rg RegonLookup, kc KRSLookup) 
 				}); err != nil {
 					return stats, err
 				}
+				wrote = true
 			}
 		}
 		// Re-read: REGON may have just supplied the KRS number.
@@ -72,9 +74,14 @@ func Enrich(ctx context.Context, st *store.Store, rg RegonLookup, kc KRSLookup) 
 				if err := st.FillCompanyFields(cur.ID, map[string]string{"board_members": string(b)}); err != nil {
 					return stats, err
 				}
+				wrote = true
 			}
 		}
-		stats.Enriched++
+		// Count only companies that actually gained data — a lookup error or an
+		// already-complete company is not an enrichment.
+		if wrote {
+			stats.Enriched++
+		}
 	}
 	return stats, nil
 }
