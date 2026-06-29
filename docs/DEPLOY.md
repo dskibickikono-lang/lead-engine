@@ -39,10 +39,20 @@ GOOS=linux GOARCH=amd64 go build -o bin/lead-engine ./cmd/lead-engine
 scp bin/lead-engine user@vps:/opt/lead-engine/bin/
 ```
 
-## 5. Scraper commands (no wrapper scripts)
-Both scrapers expose a single command that produces the raw-leads export, so
-`gov_cmd` / `olx_cmd` invoke the binary directly — `lead-engine` execs them
-without a shell, so no shebang or execute bit is involved.
+## 5. Scraper commands
+
+**gov_cmd must go through a wrapper.** `gov_api`'s `export_dir`, `.env` and dedup
+db are all **relative to cwd**, and `ScraperStage` sets no working directory — so
+under cron (cwd `/home/...`) the export lands in the wrong place and the
+file-exists check fails the scrape stage. Point `gov_cmd` at `deploy/run-gov.sh`
+(installed at `/opt/gov_api/run-gov.sh`, `chmod +x`), which `cd`s into the gov
+dir before exec'ing python:
+```
+gov_cmd = ["/opt/gov_api/run-gov.sh", "--voivodeships", "14,30,24"]
+```
+The gov `.env` (chmod 600) holds `REGON_API_KEY`, `EXPORT_DIR=/opt/gov_api/exports`,
+`DB_PATH=/opt/gov_api/gov_leads.db`. `olx-pp-cli` resolves its paths from the
+binary location, so it is cwd-safe and needs no wrapper:
 
 OLX combines sync + export in one subcommand (`config.example.toml`):
 ```
@@ -65,3 +75,13 @@ Set MAILTO in the crontab for failure alerts (non-zero exit on any stage failure
 ```
 lead-engine run --config config.toml --skip-scrape --dry-run
 ```
+Note: `--dry-run` skips Signal/Pipedrive **but still runs the paid `resolve-nip`
+stage** — it is not free of external side effects.
+
+## 8. BizRaport cost safety (read before first run)
+`[bizraport].max_candidates` multiplies cost **and** time: each name-search
+candidate triggers a KRS profile fetch. Keep it at **5** (the example default).
+A value like 5000 makes single-company lookups cost ~1000 PLN, resolve takes
+hours, and resolution quality collapses (no confident match among thousands).
+Keep `daily_cap_pln` at a real budget (e.g. 10–50). See
+`FIRST-RUN-REPORT-2026-06-29.md` for the incident this note came from.
