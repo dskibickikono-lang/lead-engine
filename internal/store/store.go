@@ -47,6 +47,9 @@ CREATE TABLE IF NOT EXISTS companies (
   email           TEXT NOT NULL DEFAULT '',
   phone           TEXT NOT NULL DEFAULT '',
   board_members   TEXT NOT NULL DEFAULT '', -- JSON array [{"name":..,"role":..}]
+  headcount        TEXT NOT NULL DEFAULT '', -- liczba zatrudnionych (REGON BIR)
+  share_capital    TEXT NOT NULL DEFAULT '', -- kapitał zakładowy (KRS dział 1)
+  registered_since TEXT NOT NULL DEFAULT '', -- data wpisu/powstania (REGON BIR)
   first_seen      TEXT NOT NULL,
   last_seen       TEXT NOT NULL
 );
@@ -124,10 +127,58 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("init schema: %w", err)
 	}
+	if err := migrate(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
 	// Single sequential writer; one connection avoids SQLITE_BUSY between
 	// statements and keeps WAL checkpointing simple.
 	db.SetMaxOpenConns(1)
 	return &Store{DB: db}, nil
+}
+
+// migrate applies additive column changes to tables that already exist on a
+// live DB. The schema const uses CREATE TABLE IF NOT EXISTS, which never alters
+// an existing table, so columns added after first deploy need an explicit
+// ALTER TABLE here. Each add is guarded by a PRAGMA table_info check so the
+// function is idempotent.
+func migrate(db *sql.DB) error {
+	cols, err := tableColumns(db, "companies")
+	if err != nil {
+		return err
+	}
+	adds := []struct{ name, ddl string }{
+		{"headcount", `ALTER TABLE companies ADD COLUMN headcount TEXT NOT NULL DEFAULT ''`},
+		{"share_capital", `ALTER TABLE companies ADD COLUMN share_capital TEXT NOT NULL DEFAULT ''`},
+		{"registered_since", `ALTER TABLE companies ADD COLUMN registered_since TEXT NOT NULL DEFAULT ''`},
+	}
+	for _, a := range adds {
+		if cols[a.name] {
+			continue
+		}
+		if _, err := db.Exec(a.ddl); err != nil {
+			return fmt.Errorf("add column %s: %w", a.name, err)
+		}
+	}
+	return nil
+}
+
+// tableColumns returns the set of column names present on a table.
+func tableColumns(db *sql.DB, table string) (map[string]bool, error) {
+	rows, err := db.Query(`SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cols := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		cols[name] = true
+	}
+	return cols, rows.Err()
 }
 
 // Close closes the underlying database connection.

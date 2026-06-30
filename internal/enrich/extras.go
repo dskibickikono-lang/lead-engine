@@ -109,6 +109,9 @@ func extractGovRegonFields(payload string) (map[string]string, error) {
 	if v := strVal(regon, "legalForm"); v != "" {
 		result["legal_form"] = v
 	}
+	if v := strVal(regon, "registeredSince"); v != "" {
+		result["registered_since"] = v
+	}
 	if len(result) == 0 {
 		return nil, nil
 	}

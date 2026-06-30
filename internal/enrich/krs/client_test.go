@@ -39,6 +39,43 @@ func TestFetchBoard(t *testing.T) {
 	}
 }
 
+func TestFetchProfile(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/odpis.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/krs/OdpisAktualny/0000123456" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL}
+	p, err := c.FetchProfile(context.Background(), "0000123456")
+	if err != nil {
+		t.Fatalf("FetchProfile: %v", err)
+	}
+	if len(p.Board) != 2 {
+		t.Fatalf("board = %d members", len(p.Board))
+	}
+	if p.ShareCapital != "500000,00 PLN" {
+		t.Errorf("ShareCapital = %q, want %q", p.ShareCapital, "500000,00 PLN")
+	}
+}
+
+func TestFetchProfileNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL}
+	p, err := c.FetchProfile(context.Background(), "0000000000")
+	if err != nil || p != nil {
+		t.Errorf("404 should be (nil, nil), got %v, %v", p, err)
+	}
+}
+
 func TestFetchBoardNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()

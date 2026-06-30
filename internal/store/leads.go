@@ -21,7 +21,9 @@ func (s *Store) LeadCandidates() ([]LeadCandidate, error) {
 	rows, err := s.DB.Query(`
 		SELECT c.id, COALESCE(c.nip,''), c.name, c.normalized_name, c.nip_status,
 		       c.address, c.regon, c.krs, c.legal_form, c.pkd_main, c.company_size,
-		       c.website, c.email, c.phone, c.board_members, c.first_seen, c.last_seen
+		       c.website, c.email, c.phone, c.board_members,
+		       c.headcount, c.share_capital, c.registered_since,
+		       c.first_seen, c.last_seen
 		FROM companies c
 		WHERE EXISTS (
 		  SELECT 1 FROM raw_offers o
@@ -38,7 +40,8 @@ func (s *Store) LeadCandidates() ([]LeadCandidate, error) {
 		var c Company
 		if err := rows.Scan(&c.ID, &c.NIP, &c.Name, &c.NormalizedName, &c.NIPStatus,
 			&c.Address, &c.REGON, &c.KRS, &c.LegalForm, &c.PKDMain, &c.CompanySize,
-			&c.Website, &c.Email, &c.Phone, &c.BoardMembers, &c.FirstSeen, &c.LastSeen); err != nil {
+			&c.Website, &c.Email, &c.Phone, &c.BoardMembers,
+			&c.Headcount, &c.ShareCapital, &c.RegisteredSince, &c.FirstSeen, &c.LastSeen); err != nil {
 			return nil, err
 		}
 		out = append(out, LeadCandidate{Company: c})
@@ -117,7 +120,8 @@ func (s *Store) DeliverableLeads() ([]DeliverableLead, error) {
 		       c.website,
 		       COALESCE(NULLIF(c.email,''),   (SELECT o.email FROM raw_offers o WHERE o.company_id=c.id AND o.email<>''   LIMIT 1), ''),
 		       COALESCE(NULLIF(c.phone,''),   (SELECT o.phone FROM raw_offers o WHERE o.company_id=c.id AND o.phone<>''   LIMIT 1), ''),
-		       c.board_members, c.first_seen, c.last_seen
+		       c.board_members, c.headcount, c.share_capital, c.registered_since,
+		       c.first_seen, c.last_seen
 		FROM leads l JOIN companies c ON c.id = l.company_id
 		WHERE (l.status = 'new' AND l.qualified = 1)
 		   OR (l.status = 'new' AND c.nip_status IN ('pending','unresolved'))
@@ -137,7 +141,8 @@ func (s *Store) DeliverableLeads() ([]DeliverableLead, error) {
 			&d.LeadID, &posJSON, &score, &qualInt,
 			&c.ID, &c.NIP, &c.Name, &c.NormalizedName, &c.NIPStatus,
 			&c.Address, &c.REGON, &c.KRS, &c.LegalForm, &c.PKDMain, &c.CompanySize,
-			&c.Website, &c.Email, &c.Phone, &c.BoardMembers, &c.FirstSeen, &c.LastSeen,
+			&c.Website, &c.Email, &c.Phone, &c.BoardMembers,
+			&c.Headcount, &c.ShareCapital, &c.RegisteredSince, &c.FirstSeen, &c.LastSeen,
 		); err != nil {
 			return nil, err
 		}
