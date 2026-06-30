@@ -17,10 +17,10 @@ func (r regonStub) LookupByNIP(ctx context.Context, nip string) (*regon.Report, 
 	return r.rep, nil
 }
 
-type krsStub struct{ board []krs.BoardMember }
+type krsStub struct{ profile *krs.Profile }
 
-func (k krsStub) FetchBoard(ctx context.Context, krsNum string) ([]krs.BoardMember, error) {
-	return k.board, nil
+func (k krsStub) FetchProfile(ctx context.Context, krsNum string) (*krs.Profile, error) {
+	return k.profile, nil
 }
 
 func TestEnrichFillsGapsAndBoard(t *testing.T) {
@@ -31,7 +31,7 @@ func TestEnrichFillsGapsAndBoard(t *testing.T) {
 		regonStub{rep: &regon.Report{REGON: "123456785", Type: "P", KRS: "0000123456",
 			Phone: "221112233", Email: "biuro@stalmet.example", Website: "stalmet.example",
 			Address: "Prosta 1, 00-001 Warszawa"}},
-		krsStub{board: []krs.BoardMember{{Name: "JAN KOWALSKI", Role: "PREZES ZARZĄDU"}}},
+		krsStub{profile: &krs.Profile{Board: []krs.BoardMember{{Name: "JAN KOWALSKI", Role: "PREZES ZARZĄDU"}}}},
 	)
 	if err != nil {
 		t.Fatalf("Enrich: %v", err)
@@ -50,15 +50,15 @@ func TestEnrichFillsGapsAndBoard(t *testing.T) {
 	}
 }
 
-// countingKRSStub wraps krsStub and counts FetchBoard calls.
+// countingKRSStub wraps krsStub and counts FetchProfile calls.
 type countingKRSStub struct {
 	inner krsStub
 	calls int
 }
 
-func (c *countingKRSStub) FetchBoard(ctx context.Context, krsNum string) ([]krs.BoardMember, error) {
+func (c *countingKRSStub) FetchProfile(ctx context.Context, krsNum string) (*krs.Profile, error) {
 	c.calls++
-	return c.inner.FetchBoard(ctx, krsNum)
+	return c.inner.FetchProfile(ctx, krsNum)
 }
 
 // TestEnrichCachesEmptyBoard verifies that an empty board result is written as
@@ -83,8 +83,8 @@ func TestEnrichCachesEmptyBoard(t *testing.T) {
 		t.Fatalf("FillCompanyFields: %v", err)
 	}
 
-	stub := &countingKRSStub{inner: krsStub{board: nil}} // empty board
-	rg := regonStub{rep: nil}                             // REGON not needed
+	stub := &countingKRSStub{inner: krsStub{profile: &krs.Profile{}}} // empty board
+	rg := regonStub{rep: nil}                                         // REGON not needed
 
 	// Run 1: board fetch returns empty; expect "[]" written.
 	stats1, err := Enrich(context.Background(), st, rg, stub)
@@ -152,7 +152,7 @@ func TestFillFromGovExtras(t *testing.T) {
 		regonStub{rep: &regon.Report{REGON: "123456785", KRS: "0000123456",
 			Phone: "221112233", Email: "biuro@stalmet.example",
 			Website: "stalmet.example", Address: "Prosta 1, 00-001 Warszawa"}},
-		krsStub{board: nil},
+		krsStub{profile: &krs.Profile{}},
 	)
 	if err != nil {
 		t.Fatalf("Enrich: %v", err)

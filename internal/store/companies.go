@@ -22,19 +22,24 @@ type Company struct {
 	Email          string
 	Phone          string
 	BoardMembers   string
+	Headcount       string
+	ShareCapital    string
+	RegisteredSince string
 	FirstSeen      string
 	LastSeen       string
 }
 
 const companyCols = `id, COALESCE(nip,''), name, normalized_name, nip_status,
 	address, regon, krs, legal_form, pkd_main, company_size, website, email,
-	phone, board_members, first_seen, last_seen`
+	phone, board_members, headcount, share_capital, registered_since,
+	first_seen, last_seen`
 
 func scanCompany(row *sql.Row) (*Company, error) {
 	var c Company
 	err := row.Scan(&c.ID, &c.NIP, &c.Name, &c.NormalizedName, &c.NIPStatus,
 		&c.Address, &c.REGON, &c.KRS, &c.LegalForm, &c.PKDMain, &c.CompanySize,
-		&c.Website, &c.Email, &c.Phone, &c.BoardMembers, &c.FirstSeen, &c.LastSeen)
+		&c.Website, &c.Email, &c.Phone, &c.BoardMembers,
+		&c.Headcount, &c.ShareCapital, &c.RegisteredSince, &c.FirstSeen, &c.LastSeen)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -44,7 +49,7 @@ func scanCompany(row *sql.Row) (*Company, error) {
 	return &c, nil
 }
 
-// queryCompanies executes query with args, scans all rows using the 17-column
+// queryCompanies executes query with args, scans all rows using the
 // companyCols layout, and returns the slice. Used by CompaniesPendingNIP and
 // CompaniesNeedingEnrichment to share the scan loop.
 func (s *Store) queryCompanies(query string, args ...any) ([]Company, error) {
@@ -58,7 +63,8 @@ func (s *Store) queryCompanies(query string, args ...any) ([]Company, error) {
 		var c Company
 		if err := rows.Scan(&c.ID, &c.NIP, &c.Name, &c.NormalizedName, &c.NIPStatus,
 			&c.Address, &c.REGON, &c.KRS, &c.LegalForm, &c.PKDMain, &c.CompanySize,
-			&c.Website, &c.Email, &c.Phone, &c.BoardMembers, &c.FirstSeen, &c.LastSeen); err != nil {
+			&c.Website, &c.Email, &c.Phone, &c.BoardMembers,
+			&c.Headcount, &c.ShareCapital, &c.RegisteredSince, &c.FirstSeen, &c.LastSeen); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

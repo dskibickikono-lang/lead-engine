@@ -1,19 +1,31 @@
-LEADY 2026-06-10
-Zweryfikowane: 1 | Niezweryfikowane: 1
+📦 LEADY 2026-06-10
+✅ Zweryfikowane: 1 | ❓ Niezweryfikowane: 1
 
-== ZWERYFIKOWANE ==
-1. Stalmet Sp. z o.o. [score 92]
-   Szuka: Operator maszyn CNC; Operator wtryskarki
-   Lokalizacja: Warszawa
-   NIP: 1234567890
-   Tel: +48221112233
-   Email: biuro@stalmet.example
-   WWW: stalmet.example
-   Zarząd: JAN KOWALSKI (PREZES ZARZĄDU)
+━━━━━━━━━━━━━━━━━━━━━━━
+✅ ZWERYFIKOWANE
+━━━━━━━━━━━━━━━━━━━━━━━
 
-== NIEZWERYFIKOWANE (brak NIP) ==
-1. Mała Firma Jan Nowak — Monter (Radom)
-   Tel: +48501502503
+1. 🏛️ Stalmet Sp. z o.o.
+   📍 Warszawa
+   🔍 Szuka: Operator maszyn CNC; Operator wtryskarki
+   🪪 NIP: 1234567890
+   📞 +48221112233
+   📧 biuro@stalmet.example
+   🌐 stalmet.example
+   🏷️ spółka z ograniczoną odpowiedzialnością
+   👥 Zatrudnienie: 85
+   💰 Kapitał: 500000,00 PLN
+   🏭 PKD: 25.62.Z
+   📅 W rejestrze od: 2009-03-12
+   ⭐ Score: 92
+
+━━━━━━━━━━━━━━━━━━━━━━━
+❓ NIEZWERYFIKOWANE (brak NIP)
+━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 🏢 Mała Firma Jan Nowak — Monter (Radom)
+   📞 +48501502503
+   📧 kontakt@malafirma.example
 
 — ofert: CBOP 120, OLX 45 | BizRaport: 2.50/10.00 PLN
 ⚠ olx scrape: 1 page failed

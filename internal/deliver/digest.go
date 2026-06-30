@@ -16,7 +16,12 @@ type LeadView struct {
 	Email     string
 	Website   string
 	Score     *int
-	Board     []string
+	// Business fields (verified leads); each rendered only when non-empty.
+	LegalForm       string // forma prawna
+	Employment      string // liczba zatrudnionych / wielkość zatrudnienia
+	ShareCapital    string // kapitał zakładowy
+	PKD             string // przeważające PKD
+	RegisteredSince string // w rejestrze od
 }
 
 type RunStats struct {
@@ -27,50 +32,71 @@ type RunStats struct {
 	Warnings   []string
 }
 
+const digestRule = "━━━━━━━━━━━━━━━━━━━━━━━"
+
+// RenderDigest builds the Signal message. Verified leads carry full registry +
+// business detail; unverified (OLX, no NIP) leads carry the actionable trigger
+// (phone/email). Every field line is emitted only when present.
 func RenderDigest(date string, verified, unverified []LeadView, stats RunStats) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "LEADY %s\n", date)
-	fmt.Fprintf(&b, "Zweryfikowane: %d | Niezweryfikowane: %d\n\n", len(verified), len(unverified))
+	fmt.Fprintf(&b, "📦 LEADY %s\n", date)
+	fmt.Fprintf(&b, "✅ Zweryfikowane: %d | ❓ Niezweryfikowane: %d\n", len(verified), len(unverified))
+
+	line := func(format string, a ...any) { fmt.Fprintf(&b, "   "+format+"\n", a...) }
 
 	if len(verified) > 0 {
-		b.WriteString("== ZWERYFIKOWANE ==\n")
+		fmt.Fprintf(&b, "\n%s\n✅ ZWERYFIKOWANE\n%s\n\n", digestRule, digestRule)
 		for i, l := range verified {
-			fmt.Fprintf(&b, "%d. %s", i+1, l.Company)
-			if l.Score != nil {
-				fmt.Fprintf(&b, " [score %d]", *l.Score)
-			}
-			b.WriteString("\n")
-			fmt.Fprintf(&b, "   Szuka: %s\n", strings.Join(l.Positions, "; "))
+			fmt.Fprintf(&b, "%d. 🏛️ %s\n", i+1, l.Company)
 			if l.Location != "" {
-				fmt.Fprintf(&b, "   Lokalizacja: %s\n", l.Location)
+				line("📍 %s", l.Location)
 			}
-			fmt.Fprintf(&b, "   NIP: %s\n", l.NIP)
+			line("🔍 Szuka: %s", strings.Join(l.Positions, "; "))
+			line("🪪 NIP: %s", l.NIP)
 			if l.Phone != "" {
-				fmt.Fprintf(&b, "   Tel: %s\n", l.Phone)
+				line("📞 %s", l.Phone)
 			}
 			if l.Email != "" {
-				fmt.Fprintf(&b, "   Email: %s\n", l.Email)
+				line("📧 %s", l.Email)
 			}
 			if l.Website != "" {
-				fmt.Fprintf(&b, "   WWW: %s\n", l.Website)
+				line("🌐 %s", l.Website)
 			}
-			if len(l.Board) > 0 {
-				fmt.Fprintf(&b, "   Zarząd: %s\n", strings.Join(l.Board, ", "))
+			if l.LegalForm != "" {
+				line("🏷️ %s", l.LegalForm)
+			}
+			if l.Employment != "" {
+				line("👥 Zatrudnienie: %s", l.Employment)
+			}
+			if l.ShareCapital != "" {
+				line("💰 Kapitał: %s", l.ShareCapital)
+			}
+			if l.PKD != "" {
+				line("🏭 PKD: %s", l.PKD)
+			}
+			if l.RegisteredSince != "" {
+				line("📅 W rejestrze od: %s", l.RegisteredSince)
+			}
+			if l.Score != nil {
+				line("⭐ Score: %d", *l.Score)
 			}
 			b.WriteString("\n")
 		}
 	}
 
 	if len(unverified) > 0 {
-		b.WriteString("== NIEZWERYFIKOWANE (brak NIP) ==\n")
+		fmt.Fprintf(&b, "%s\n❓ NIEZWERYFIKOWANE (brak NIP)\n%s\n\n", digestRule, digestRule)
 		for i, l := range unverified {
-			fmt.Fprintf(&b, "%d. %s — %s", i+1, l.Company, strings.Join(l.Positions, "; "))
+			fmt.Fprintf(&b, "%d. 🏢 %s — %s", i+1, l.Company, strings.Join(l.Positions, "; "))
 			if l.Location != "" {
 				fmt.Fprintf(&b, " (%s)", l.Location)
 			}
 			b.WriteString("\n")
 			if l.Phone != "" {
-				fmt.Fprintf(&b, "   Tel: %s\n", l.Phone)
+				line("📞 %s", l.Phone)
+			}
+			if l.Email != "" {
+				line("📧 %s", l.Email)
 			}
 		}
 		b.WriteString("\n")

@@ -18,6 +18,15 @@ type BoardMember struct {
 	Role string `json:"role"`
 }
 
+// Profile is the subset of a KRS extract the pipeline uses: the management
+// board and the share capital (kapitał zakładowy), both read from a single
+// OdpisAktualny fetch. ShareCapital is "" for entities without one (e.g.
+// foundations, some partnerships).
+type Profile struct {
+	Board        []BoardMember `json:"board"`
+	ShareCapital string        `json:"shareCapital"` // e.g. "5000000,00 PLN"
+}
+
 type Client struct {
 	BaseURL string
 	HTTP    *http.Client
@@ -40,6 +49,17 @@ func (c *Client) base() string {
 type odpisResponse struct {
 	Odpis struct {
 		Dane struct {
+			Dzial1 struct {
+				// Kapitał zakładowy lives in dział 1. Path verified against a
+				// live OdpisAktualny response before relying on the value; when
+				// absent the field stays empty and only the board is used.
+				Kapital struct {
+					WysokoscKapitaluZakladowego struct {
+						Wartosc string `json:"wartosc"`
+						Waluta  string `json:"waluta"`
+					} `json:"wysokoscKapitaluZakladowego"`
+				} `json:"kapital"`
+			} `json:"dzial1"`
 			Dzial2 struct {
 				Reprezentacja struct {
 					Sklad []struct {
@@ -57,9 +77,10 @@ type odpisResponse struct {
 	} `json:"odpis"`
 }
 
-// FetchBoard returns the management board for a KRS number, or (nil, nil)
-// when the registry has no such entity (404) — non-blocking by design.
-func (c *Client) FetchBoard(ctx context.Context, krsNum string) ([]BoardMember, error) {
+// FetchProfile returns the board + share capital for a KRS number, or
+// (nil, nil) when the registry has no such entity (404) — non-blocking by
+// design. Both fields come from a single OdpisAktualny fetch.
+func (c *Client) FetchProfile(ctx context.Context, krsNum string) (*Profile, error) {
 	url := fmt.Sprintf("%s/api/krs/OdpisAktualny/%s?rejestr=P&format=json", c.base(), krsNum)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -80,13 +101,26 @@ func (c *Client) FetchBoard(ctx context.Context, krsNum string) ([]BoardMember, 
 	if err := json.NewDecoder(resp.Body).Decode(&o); err != nil {
 		return nil, fmt.Errorf("krs %s: decode: %w", krsNum, err)
 	}
-	var board []BoardMember
+	p := &Profile{}
 	for _, m := range o.Odpis.Dane.Dzial2.Reprezentacja.Sklad {
 		name := strings.TrimSpace(m.Imiona.Imie + " " + m.Nazwisko.NazwiskoICzlon)
 		if name == "" {
 			continue
 		}
-		board = append(board, BoardMember{Name: name, Role: m.Funkcja})
+		p.Board = append(p.Board, BoardMember{Name: name, Role: m.Funkcja})
 	}
-	return board, nil
+	if k := o.Odpis.Dane.Dzial1.Kapital.WysokoscKapitaluZakladowego; strings.TrimSpace(k.Wartosc) != "" {
+		p.ShareCapital = strings.TrimSpace(k.Wartosc + " " + k.Waluta)
+	}
+	return p, nil
+}
+
+// FetchBoard returns just the management board for a KRS number. Retained for
+// callers/tests that only need the board; delegates to FetchProfile.
+func (c *Client) FetchBoard(ctx context.Context, krsNum string) ([]BoardMember, error) {
+	p, err := c.FetchProfile(ctx, krsNum)
+	if err != nil || p == nil {
+		return nil, err
+	}
+	return p.Board, nil
 }

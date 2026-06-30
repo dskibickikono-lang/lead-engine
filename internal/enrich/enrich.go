@@ -17,7 +17,7 @@ type RegonLookup interface {
 }
 
 type KRSLookup interface {
-	FetchBoard(ctx context.Context, krsNum string) ([]krs.BoardMember, error)
+	FetchProfile(ctx context.Context, krsNum string) (*krs.Profile, error)
 }
 
 type Stats struct {
@@ -25,8 +25,9 @@ type Stats struct {
 	Errors   int
 }
 
-// Enrich fills missing registry fields on verified companies using the
-// free APIs: REGON for contact/address/KRS number, then KRS for the board.
+// Enrich fills missing registry fields on verified companies using the free
+// APIs: REGON for contact/address/KRS number plus business fields (headcount,
+// legal form, registration date), then KRS for the board and share capital.
 // Failures are per-company and non-blocking: the company ships partial and
 // is retried on the next run.
 func Enrich(ctx context.Context, st *store.Store, rg RegonLookup, kc KRSLookup) (Stats, error) {
@@ -43,7 +44,8 @@ func Enrich(ctx context.Context, st *store.Store, rg RegonLookup, kc KRSLookup) 
 			return stats, err
 		}
 		wrote := false // did this company actually gain registry data this run?
-		if c.Phone == "" || c.Email == "" || c.Website == "" || c.Address == "" || c.KRS == "" || c.REGON == "" {
+		if c.Phone == "" || c.Email == "" || c.Website == "" || c.Address == "" ||
+			c.KRS == "" || c.REGON == "" || c.Headcount == "" || c.LegalForm == "" || c.RegisteredSince == "" {
 			rep, err := lookupRegonCached(ctx, st, rg, c.NIP)
 			if err != nil {
 				stats.Errors++
@@ -51,10 +53,17 @@ func Enrich(ctx context.Context, st *store.Store, rg RegonLookup, kc KRSLookup) 
 				if err := st.FillCompanyFields(c.ID, map[string]string{
 					"regon": rep.REGON, "krs": rep.KRS, "phone": rep.Phone,
 					"email": rep.Email, "website": rep.Website, "address": rep.Address,
+					"headcount": rep.Headcount, "legal_form": rep.LegalForm,
+					"registered_since": rep.RegisteredSince,
 				}); err != nil {
 					return stats, err
 				}
-				wrote = true
+				// Count only a genuine first-time fill, not a no-op re-read of an
+				// already-complete company selected because a field BIR can't
+				// supply (e.g. headcount for a sole trader) stays empty.
+				if c.REGON == "" {
+					wrote = true
+				}
 			}
 		}
 		// Re-read: REGON may have just supplied the KRS number.
@@ -62,19 +71,29 @@ func Enrich(ctx context.Context, st *store.Store, rg RegonLookup, kc KRSLookup) 
 		if err != nil || cur == nil {
 			continue
 		}
-		if cur.KRS != "" && cur.BoardMembers == "" {
-			board, err := fetchBoardCached(ctx, st, kc, cur.KRS)
+		if cur.KRS != "" && (cur.BoardMembers == "" || cur.ShareCapital == "") {
+			prof, err := fetchProfileCached(ctx, st, kc, cur.KRS)
 			if err != nil {
 				stats.Errors++
-			} else {
-				b, _ := json.Marshal(board) // nil → "null"; normalize to []
-				if len(board) == 0 {
-					b = []byte("[]")
+			} else if prof != nil {
+				fields := map[string]string{}
+				if cur.BoardMembers == "" {
+					b, _ := json.Marshal(prof.Board) // nil → "null"; normalize to []
+					if len(prof.Board) == 0 {
+						b = []byte("[]")
+					}
+					fields["board_members"] = string(b)
+					wrote = true
 				}
-				if err := st.FillCompanyFields(cur.ID, map[string]string{"board_members": string(b)}); err != nil {
-					return stats, err
+				if cur.ShareCapital == "" && prof.ShareCapital != "" {
+					fields["share_capital"] = prof.ShareCapital
+					wrote = true
 				}
-				wrote = true
+				if len(fields) > 0 {
+					if err := st.FillCompanyFields(cur.ID, fields); err != nil {
+						return stats, err
+					}
+				}
 			}
 		}
 		// Count only companies that actually gained data — a lookup error or an
@@ -89,7 +108,11 @@ func Enrich(ctx context.Context, st *store.Store, rg RegonLookup, kc KRSLookup) 
 // lookupRegonCached caches both hits and definitive not-found answers;
 // transport/session errors are NOT cached so the next run retries.
 func lookupRegonCached(ctx context.Context, st *store.Store, rg RegonLookup, nip string) (*regon.Report, error) {
-	if raw, ok, _ := st.CacheGet("regon-nip", nip, cacheTTL); ok {
+	// Cache key carries a version suffix: bumping it invalidates reports cached
+	// before the business fields (headcount/legal_form/registered_since) were
+	// captured, so the existing company base backfills them on the next run.
+	const cacheKey = "regon-nip-v2"
+	if raw, ok, _ := st.CacheGet(cacheKey, nip, cacheTTL); ok {
 		if string(raw) == "null" { // cached not-found
 			return nil, nil
 		}
@@ -100,7 +123,7 @@ func lookupRegonCached(ctx context.Context, st *store.Store, rg RegonLookup, nip
 	}
 	rep, err := rg.LookupByNIP(ctx, nip)
 	if errors.Is(err, regon.ErrNotFound) {
-		st.CachePut("regon-nip", nip, []byte("null")) //nolint:errcheck
+		st.CachePut(cacheKey, nip, []byte("null")) //nolint:errcheck
 		return nil, nil
 	}
 	if err != nil {
@@ -108,25 +131,28 @@ func lookupRegonCached(ctx context.Context, st *store.Store, rg RegonLookup, nip
 	}
 	if rep != nil {
 		if raw, err := json.Marshal(rep); err == nil {
-			st.CachePut("regon-nip", nip, raw) //nolint:errcheck
+			st.CachePut(cacheKey, nip, raw) //nolint:errcheck
 		}
 	}
 	return rep, nil
 }
 
-func fetchBoardCached(ctx context.Context, st *store.Store, kc KRSLookup, krsNum string) ([]krs.BoardMember, error) {
-	if raw, ok, _ := st.CacheGet("krs-board", krsNum, cacheTTL); ok {
-		var board []krs.BoardMember
-		if err := json.Unmarshal(raw, &board); err == nil {
-			return board, nil
+func fetchProfileCached(ctx context.Context, st *store.Store, kc KRSLookup, krsNum string) (*krs.Profile, error) {
+	if raw, ok, _ := st.CacheGet("krs-profile", krsNum, cacheTTL); ok {
+		var prof krs.Profile
+		if err := json.Unmarshal(raw, &prof); err == nil {
+			return &prof, nil
 		}
 	}
-	board, err := kc.FetchBoard(ctx, krsNum)
+	prof, err := kc.FetchProfile(ctx, krsNum)
 	if err != nil {
 		return nil, err
 	}
-	if raw, err := json.Marshal(board); err == nil {
-		st.CachePut("krs-board", krsNum, raw) //nolint:errcheck
+	if prof == nil { // 404 — no entity; nothing to cache
+		return nil, nil
 	}
-	return board, nil
+	if raw, err := json.Marshal(prof); err == nil {
+		st.CachePut("krs-profile", krsNum, raw) //nolint:errcheck
+	}
+	return prof, nil
 }
