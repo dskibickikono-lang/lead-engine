@@ -22,6 +22,11 @@ type LeadView struct {
 	ShareCapital    string // kapitał zakładowy
 	PKD             string // przeważające PKD
 	RegisteredSince string // w rejestrze od
+	// Per-offer contact fields. URL is the OLX listing (unverified trigger);
+	// ContactPerson (name) + WorkLocation come from CBOP (verified).
+	URL           string
+	ContactPerson string
+	WorkLocation  string
 }
 
 type RunStats struct {
@@ -51,8 +56,14 @@ func RenderDigest(date string, verified, unverified []LeadView, stats RunStats) 
 			if l.Location != "" {
 				line("📍 %s", l.Location)
 			}
+			if l.WorkLocation != "" {
+				line("🗺️ Miejsce pracy: %s", l.WorkLocation)
+			}
 			line("🔍 Szuka: %s", strings.Join(l.Positions, "; "))
 			line("🪪 NIP: %s", l.NIP)
+			if l.ContactPerson != "" {
+				line("🧑 Kontakt: %s", l.ContactPerson)
+			}
 			if l.Phone != "" {
 				line("📞 %s", l.Phone)
 			}
@@ -97,6 +108,9 @@ func RenderDigest(date string, verified, unverified []LeadView, stats RunStats) 
 			}
 			if l.Email != "" {
 				line("📧 %s", l.Email)
+			}
+			if l.URL != "" {
+				line("🔗 %s", l.URL)
 			}
 		}
 		b.WriteString("\n")

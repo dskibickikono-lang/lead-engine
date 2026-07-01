@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS raw_offers (
   salary_to    REAL,
   phone        TEXT,
   email        TEXT,
+  url          TEXT,
+  contact_person TEXT,
+  work_location  TEXT,
+  website      TEXT,
   score        INTEGER,
   scraped_at   TEXT,
   ingested_at  TEXT NOT NULL,
@@ -158,6 +162,28 @@ func migrate(db *sql.DB) error {
 		}
 		if _, err := db.Exec(a.ddl); err != nil {
 			return fmt.Errorf("add column %s: %w", a.name, err)
+		}
+	}
+
+	// raw_offers gained per-offer contact columns after first deploy: the OLX
+	// listing url (a trigger for unverified leads) plus the CBOP contact person
+	// and job-site work location.
+	rawCols, err := tableColumns(db, "raw_offers")
+	if err != nil {
+		return err
+	}
+	rawAdds := []struct{ name, ddl string }{
+		{"url", `ALTER TABLE raw_offers ADD COLUMN url TEXT`},
+		{"contact_person", `ALTER TABLE raw_offers ADD COLUMN contact_person TEXT`},
+		{"work_location", `ALTER TABLE raw_offers ADD COLUMN work_location TEXT`},
+		{"website", `ALTER TABLE raw_offers ADD COLUMN website TEXT`},
+	}
+	for _, a := range rawAdds {
+		if rawCols[a.name] {
+			continue
+		}
+		if _, err := db.Exec(a.ddl); err != nil {
+			return fmt.Errorf("add column raw_offers.%s: %w", a.name, err)
 		}
 	}
 	return nil

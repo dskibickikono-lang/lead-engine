@@ -99,6 +99,11 @@ type DeliverableLead struct {
 	Positions []string
 	Score     *int
 	Qualified bool
+	// Per-offer contact attributes (no company column). URL is the OLX listing
+	// (trigger for unverified leads); ContactPerson + WorkLocation come from CBOP.
+	URL           string
+	ContactPerson string
+	WorkLocation  string
 }
 
 // DeliverableLeads returns all 'new' qualified leads plus 'new' unverified
@@ -117,11 +122,14 @@ func (s *Store) DeliverableLeads() ([]DeliverableLead, error) {
 		SELECT l.id, l.positions, l.score, l.qualified,
 		       c.id, COALESCE(c.nip,''), c.name, c.normalized_name, c.nip_status,
 		       c.address, c.regon, c.krs, c.legal_form, c.pkd_main, c.company_size,
-		       c.website,
+		       COALESCE(NULLIF(c.website,''), (SELECT o.website FROM raw_offers o WHERE o.company_id=c.id AND o.website<>'' LIMIT 1), ''),
 		       COALESCE(NULLIF(c.email,''),   (SELECT o.email FROM raw_offers o WHERE o.company_id=c.id AND o.email<>''   LIMIT 1), ''),
 		       COALESCE(NULLIF(c.phone,''),   (SELECT o.phone FROM raw_offers o WHERE o.company_id=c.id AND o.phone<>''   LIMIT 1), ''),
 		       c.board_members, c.headcount, c.share_capital, c.registered_since,
-		       c.first_seen, c.last_seen
+		       c.first_seen, c.last_seen,
+		       COALESCE((SELECT o.url            FROM raw_offers o WHERE o.company_id=c.id AND o.url<>''            LIMIT 1), ''),
+		       COALESCE((SELECT o.contact_person FROM raw_offers o WHERE o.company_id=c.id AND o.contact_person<>'' LIMIT 1), ''),
+		       COALESCE((SELECT o.work_location  FROM raw_offers o WHERE o.company_id=c.id AND o.work_location<>''  LIMIT 1), '')
 		FROM leads l JOIN companies c ON c.id = l.company_id
 		WHERE (l.status = 'new' AND l.qualified = 1)
 		   OR (l.status = 'new' AND c.nip_status IN ('pending','unresolved'))
@@ -143,6 +151,7 @@ func (s *Store) DeliverableLeads() ([]DeliverableLead, error) {
 			&c.Address, &c.REGON, &c.KRS, &c.LegalForm, &c.PKDMain, &c.CompanySize,
 			&c.Website, &c.Email, &c.Phone, &c.BoardMembers,
 			&c.Headcount, &c.ShareCapital, &c.RegisteredSince, &c.FirstSeen, &c.LastSeen,
+			&d.URL, &d.ContactPerson, &d.WorkLocation,
 		); err != nil {
 			return nil, err
 		}
