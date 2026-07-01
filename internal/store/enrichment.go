@@ -25,6 +25,7 @@ func (s *Store) FillCompanyFields(id int64, f map[string]string) error {
 		"address": true, "regon": true, "krs": true, "legal_form": true,
 		"pkd_main": true, "company_size": true, "website": true,
 		"email": true, "phone": true, "board_members": true,
+		"headcount": true, "share_capital": true, "registered_since": true,
 	}
 	for col, val := range f {
 		if val == "" || !allowed[col] {
@@ -40,10 +41,16 @@ func (s *Store) FillCompanyFields(id int64, f map[string]string) error {
 }
 
 // CompaniesNeedingEnrichment returns verified companies missing any
-// enrichment field that the free APIs can supply.
+// enrichment field that the free APIs can supply. headcount/share_capital/
+// registered_since are included so the existing company base backfills the
+// business fields; companies that legitimately lack them (sole traders, firms
+// with no share capital) stay selected but do no real work — the cached REGON/
+// KRS responses make the repeated lookups free, matching the existing
+// unresolved-NIP retry policy.
 func (s *Store) CompaniesNeedingEnrichment() ([]Company, error) {
 	return s.queryCompanies(`SELECT ` + companyCols + ` FROM companies
 		WHERE nip_status = 'verified'
-		  AND (phone='' OR email='' OR website='' OR address='' OR krs='' OR regon='' OR board_members='')
+		  AND (phone='' OR email='' OR website='' OR address='' OR krs='' OR regon=''
+		       OR board_members='' OR headcount='' OR share_capital='' OR registered_since='')
 		ORDER BY id`)
 }

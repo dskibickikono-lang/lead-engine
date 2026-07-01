@@ -15,11 +15,17 @@ func TestRenderDigest(t *testing.T) {
 		Positions: []string{"Operator maszyn CNC", "Operator wtryskarki"},
 		Location:  "Warszawa", Phone: "+48221112233",
 		Email: "biuro@stalmet.example", Website: "stalmet.example",
-		Score: &hi, Board: []string{"JAN KOWALSKI (PREZES ZARZĄDU)"},
+		Score:           &hi,
+		LegalForm:       "spółka z ograniczoną odpowiedzialnością",
+		Employment:      "85",
+		ShareCapital:    "500000,00 PLN",
+		PKD:             "25.62.Z",
+		RegisteredSince: "2009-03-12",
 	}}
 	unverified := []LeadView{{
 		Company: "Mała Firma Jan Nowak", Positions: []string{"Monter"},
 		Location: "Radom", Phone: "+48501502503",
+		Email: "kontakt@malafirma.example",
 	}}
 	stats := RunStats{OffersCBOP: 120, OffersOLX: 45, SpendPLN: 2.5, CapPLN: 10, Warnings: []string{"olx scrape: 1 page failed"}}
 

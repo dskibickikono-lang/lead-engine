@@ -26,6 +26,11 @@ type Report struct {
 	Email   string
 	Website string
 	Address string
+	// Business fields read from the same BIR11OsPrawna full report; empty when
+	// BIR does not carry them (e.g. sole traders skip the praw_ report).
+	Headcount       string // liczba zatrudnionych
+	LegalForm       string // forma prawna
+	RegisteredSince string // data wpisu / powstania
 }
 
 // ErrNotFound means BIR has no entity for the query (ErrorCode 4) — a
@@ -212,5 +217,24 @@ func (c *Client) LookupByNIP(ctx context.Context, nip string) (*Report, error) {
 		parts = append(parts, cityPart)
 	}
 	rep.Address = strings.Join(parts, ", ")
+
+	// Business fields from the same report. Key names + fallback order mirror
+	// the production gov_api enricher (enricher.py) which reads these reliably.
+	rep.Headcount = firstNonEmpty(d, "praw_liczbaZatrudnionych", "fiz_liczbaZatrudnionych")
+	rep.LegalForm = firstNonEmpty(d, "praw_podstawowaFormaPrawna_Nazwa", "praw_szczegolnaFormaPrawna_Nazwa")
+	rep.RegisteredSince = firstNonEmpty(d,
+		"praw_dataWpisuDoREGON", "praw_dataWpisuDoRegon", "praw_dataPowstania",
+		"praw_dataWpisuDoRejestruEwidencji")
 	return rep, nil
+}
+
+// firstNonEmpty returns the first non-empty (trimmed) value among the given
+// keys of d, or "" if none is present.
+func firstNonEmpty(d map[string]string, keys ...string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(d[k]); v != "" {
+			return v
+		}
+	}
+	return ""
 }

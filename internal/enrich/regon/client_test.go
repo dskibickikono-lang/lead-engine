@@ -22,6 +22,9 @@ const reportInner = `&lt;root&gt;&lt;dane&gt;` +
 	`&lt;praw_adSiedzUlica_Nazwa&gt;Prosta&lt;/praw_adSiedzUlica_Nazwa&gt;` +
 	`&lt;praw_adSiedzNumerNieruchomosci&gt;1&lt;/praw_adSiedzNumerNieruchomosci&gt;` +
 	`&lt;praw_adSiedzKodPocztowy&gt;00001&lt;/praw_adSiedzKodPocztowy&gt;` +
+	`&lt;praw_liczbaZatrudnionych&gt;85&lt;/praw_liczbaZatrudnionych&gt;` +
+	`&lt;praw_podstawowaFormaPrawna_Nazwa&gt;SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ&lt;/praw_podstawowaFormaPrawna_Nazwa&gt;` +
+	`&lt;praw_dataWpisuDoREGON&gt;2009-03-12&lt;/praw_dataWpisuDoREGON&gt;` +
 	`&lt;/dane&gt;&lt;/root&gt;`
 
 func soapBody(action, result, inner string) string {
@@ -70,6 +73,15 @@ func TestLookupByNIP(t *testing.T) {
 	}
 	if rep.Address != "Prosta 1, 00-001 Warszawa" {
 		t.Errorf("address = %q", rep.Address)
+	}
+	if rep.Headcount != "85" {
+		t.Errorf("headcount = %q, want %q", rep.Headcount, "85")
+	}
+	if rep.LegalForm != "SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ" {
+		t.Errorf("legal form = %q", rep.LegalForm)
+	}
+	if rep.RegisteredSince != "2009-03-12" {
+		t.Errorf("registered since = %q, want %q", rep.RegisteredSince, "2009-03-12")
 	}
 }
 

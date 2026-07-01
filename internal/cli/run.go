@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -141,13 +140,26 @@ func deliverStage(ctx context.Context, cfg *config.Config, st *store.Store, stat
 		return err
 	}
 	var verified, unverified []deliver.LeadView
+	suppressed := 0
 	for _, l := range leads {
 		v := leadView(l)
 		if l.Company.NIPStatus == "verified" {
-			verified = append(verified, v)
-		} else {
-			unverified = append(unverified, v)
+			verified = append(verified, v) // always has NIP + business data
+			continue
 		}
+		// Unverified (OLX, no NIP): keep only if the salesperson has a trigger to
+		// act on — a phone or email. Drop the rest (the OLX listing URL will add
+		// another trigger in a later change). They are still marked delivered in
+		// the loop below so they do not re-accrete every run.
+		if v.Phone == "" && v.Email == "" {
+			suppressed++
+			continue
+		}
+		unverified = append(unverified, v)
+	}
+	if suppressed > 0 {
+		stats.Warnings = append(stats.Warnings,
+			fmt.Sprintf("%d niezweryfikowanych pominięto (brak telefonu/e-maila)", suppressed))
 	}
 	digest := deliver.RenderDigest(timeNowDate(), verified, unverified, *stats)
 
@@ -186,34 +198,29 @@ func deliverStage(ctx context.Context, cfg *config.Config, st *store.Store, stat
 }
 
 func leadView(l store.DeliverableLead) deliver.LeadView {
-	var board []krs.BoardMember
-	if l.Company.BoardMembers != "" {
-		_ = json.Unmarshal([]byte(l.Company.BoardMembers), &board)
-	}
-	var boardStr []string
-	for _, m := range board {
-		boardStr = append(boardStr, m.Name+" ("+m.Role+")")
+	// Employment: prefer the REGON BIR headcount number; fall back to the cbop
+	// company_size band when headcount is absent.
+	employment := l.Company.Headcount
+	if employment == "" {
+		employment = l.Company.CompanySize
 	}
 	return deliver.LeadView{
 		Company: l.Company.Name, NIP: l.Company.NIP, Positions: l.Positions,
 		Location: l.Company.Address, Phone: l.Company.Phone, Email: l.Company.Email,
-		Website: l.Company.Website, Score: l.Score, Board: boardStr,
+		Website: l.Company.Website, Score: l.Score,
+		LegalForm: l.Company.LegalForm, Employment: employment,
+		ShareCapital: l.Company.ShareCapital, PKD: l.Company.PKDMain,
+		RegisteredSince: l.Company.RegisteredSince,
 	}
 }
 
 func pipedriveLead(l store.DeliverableLead) deliver.PipedriveLead {
-	var board []krs.BoardMember
-	if l.Company.BoardMembers != "" {
-		_ = json.Unmarshal([]byte(l.Company.BoardMembers), &board)
-	}
-	var boardStr []string
-	for _, m := range board {
-		boardStr = append(boardStr, m.Name+" ("+m.Role+")")
-	}
+	// Board members are intentionally not sent: REGON/KRS return them
+	// anonymized, so the field carried no sales value.
 	return deliver.PipedriveLead{
 		Company: l.Company.Name, NIP: l.Company.NIP, REGON: l.Company.REGON,
 		KRS: l.Company.KRS, PKD: l.Company.PKDMain, Address: l.Company.Address,
-		Website: l.Company.Website, Board: boardStr, Positions: l.Positions,
+		Website: l.Company.Website, Positions: l.Positions,
 		NoteContent: "Source: lead-engine | positions: " + strings.Join(l.Positions, "; "),
 	}
 }
