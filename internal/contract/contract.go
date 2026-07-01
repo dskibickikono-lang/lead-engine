@@ -24,19 +24,23 @@ type File struct {
 }
 
 type Offer struct {
-	ExternalID  string         `json:"externalId"`
-	NIP         string         `json:"nip"` // "" when unknown (JSON null)
-	CompanyName string         `json:"companyName"`
-	Position    string         `json:"position"`
-	Location    string         `json:"location"`
-	Vacancies   int            `json:"vacancies"`
-	SalaryFrom  *float64       `json:"salaryFrom"`
-	SalaryTo    *float64       `json:"salaryTo"`
-	Phone       string         `json:"phone"`
-	Email       string         `json:"email"`
-	Score       *int           `json:"score"`
-	ScrapedAt   string         `json:"scrapedAt"`
-	Extra       map[string]any `json:"extra"`
+	ExternalID    string         `json:"externalId"`
+	NIP           string         `json:"nip"` // "" when unknown (JSON null)
+	CompanyName   string         `json:"companyName"`
+	Position      string         `json:"position"`
+	Location      string         `json:"location"`
+	Vacancies     int            `json:"vacancies"`
+	SalaryFrom    *float64       `json:"salaryFrom"`
+	SalaryTo      *float64       `json:"salaryTo"`
+	Phone         string         `json:"phone"`
+	Email         string         `json:"email"`
+	URL           string         `json:"url"`           // OLX listing URL (trigger for unverified leads)
+	ContactPerson string         `json:"contactPerson"` // CBOP osobaDoKontaktu (name only, not a trigger)
+	WorkLocation  string         `json:"workLocation"`  // CBOP job site "City, Voivodeship"
+	Website       string         `json:"website"`       // CBOP adresWww (fallback for company website)
+	Score         *int           `json:"score"`
+	ScrapedAt     string         `json:"scrapedAt"`
+	Extra         map[string]any `json:"extra"`
 }
 
 func Parse(data []byte) (*File, error) {

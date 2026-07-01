@@ -21,11 +21,14 @@ func TestRenderDigest(t *testing.T) {
 		ShareCapital:    "500000,00 PLN",
 		PKD:             "25.62.Z",
 		RegisteredSince: "2009-03-12",
+		ContactPerson:   "Justyna Paczkowska",
+		WorkLocation:    "Tczew, pomorskie",
 	}}
 	unverified := []LeadView{{
 		Company: "Mała Firma Jan Nowak", Positions: []string{"Monter"},
 		Location: "Radom", Phone: "+48501502503",
 		Email: "kontakt@malafirma.example",
+		URL:   "https://www.olx.pl/oferta/monter-ID987654.html",
 	}}
 	stats := RunStats{OffersCBOP: 120, OffersOLX: 45, SpendPLN: 2.5, CapPLN: 10, Warnings: []string{"olx scrape: 1 page failed"}}
 

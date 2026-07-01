@@ -25,20 +25,24 @@ func Ingest(st *store.Store, path string) (int, error) {
 	for _, o := range f.Offers {
 		payload, _ := json.Marshal(o)
 		err := st.UpsertRawOffer(store.RawOffer{
-			Source:      f.Source,
-			ExternalID:  o.ExternalID,
-			NIP:         o.NIP,
-			CompanyName: o.CompanyName,
-			Position:    o.Position,
-			Location:    o.Location,
-			Vacancies:   o.Vacancies,
-			SalaryFrom:  o.SalaryFrom,
-			SalaryTo:    o.SalaryTo,
-			Phone:       o.Phone,
-			Email:       o.Email,
-			Score:       o.Score,
-			ScrapedAt:   o.ScrapedAt,
-			Payload:     string(payload),
+			Source:        f.Source,
+			ExternalID:    o.ExternalID,
+			NIP:           o.NIP,
+			CompanyName:   o.CompanyName,
+			Position:      o.Position,
+			Location:      o.Location,
+			Vacancies:     o.Vacancies,
+			SalaryFrom:    o.SalaryFrom,
+			SalaryTo:      o.SalaryTo,
+			Phone:         o.Phone,
+			Email:         o.Email,
+			URL:           o.URL,
+			ContactPerson: o.ContactPerson,
+			WorkLocation:  o.WorkLocation,
+			Website:       o.Website,
+			Score:         o.Score,
+			ScrapedAt:     o.ScrapedAt,
+			Payload:       string(payload),
 		})
 		if err != nil {
 			return n, fmt.Errorf("ingest %s offer %s: %w", path, o.ExternalID, err)

@@ -14,6 +14,9 @@
       "salaryTo": 6000,
       "phone": "+48221112233",
       "email": "hr@stalmet.example",
+      "contactPerson": "Justyna Paczkowska",
+      "workLocation": "Tczew, pomorskie",
+      "website": "www.stalmet.example",
       "score": 98,
       "scrapedAt": "2026-06-10T05:00:00Z",
       "extra": {"qualified": true, "regon": {"pkdMain": "29.10.Z"}}

@@ -148,10 +148,10 @@ func deliverStage(ctx context.Context, cfg *config.Config, st *store.Store, stat
 			continue
 		}
 		// Unverified (OLX, no NIP): keep only if the salesperson has a trigger to
-		// act on — a phone or email. Drop the rest (the OLX listing URL will add
-		// another trigger in a later change). They are still marked delivered in
-		// the loop below so they do not re-accrete every run.
-		if v.Phone == "" && v.Email == "" {
+		// act on — a phone, email, or the OLX listing URL. Drop the rest (a
+		// contact-person name alone is NOT a trigger). They are still marked
+		// delivered in the loop below so they do not re-accrete every run.
+		if v.Phone == "" && v.Email == "" && v.URL == "" {
 			suppressed++
 			continue
 		}
@@ -211,6 +211,7 @@ func leadView(l store.DeliverableLead) deliver.LeadView {
 		LegalForm: l.Company.LegalForm, Employment: employment,
 		ShareCapital: l.Company.ShareCapital, PKD: l.Company.PKDMain,
 		RegisteredSince: l.Company.RegisteredSince,
+		URL:             l.URL, ContactPerson: l.ContactPerson, WorkLocation: l.WorkLocation,
 	}
 }
 
