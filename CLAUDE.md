@@ -28,11 +28,15 @@ scrape (gov + olx)  →  ingest  →  match  →  resolve-nip  →  enrich  → 
 - **resolve-nip**: for `nip_status='pending'` companies, queries BizRaport (paid)
   to find a confident NIP, bounded by a daily PLN spend cap.
 - **enrich**: fills registry fields on verified companies via **free** APIs —
-  REGON BIR (phone/email/address/KRS number) then MS KRS (board members).
+  REGON BIR (phone/email/address/KRS number **+ legal form, headcount, reg. date**)
+  then MS KRS (`FetchProfile`: **share capital** + board members). Board members
+  are stored but **no longer delivered** (REGON/KRS anonymize them).
 - **qualify**: turns enriched companies with fresh offers into leads, applying
   PKD exclusion + recent-delivery suppression + score threshold.
-- **deliver**: renders the digest, sends Signal, pushes verified+qualified leads
-  to Pipedrive, records deliveries.
+- **deliver**: renders the **emoji digest** (business fields, no board), sends
+  Signal, pushes verified+qualified leads to Pipedrive, records deliveries.
+  Unverified (OLX) leads with no phone/email are **suppressed** — every delivered
+  record must carry a trigger.
 
 The design rationale lives in `docs/superpowers/specs/2026-06-11-lead-generator-design.md`
 and the plan in `docs/superpowers/plans/`. `REVIEW.md` is an architecture review.
@@ -51,7 +55,7 @@ internal/
   match/      offer → company attach; normalize.go (name canonicalization)
   enrich/     resolve.go (NIP via BizRaport), enrich.go (REGON+KRS), extras.go
     regon/    REGON BIR SOAP client (+ envelopes.go)
-    krs/      MS KRS REST client (board members)
+    krs/      MS KRS REST client (FetchProfile: board members + share capital)
     bizraport/ BizRaport client (paid NIP resolution)
   qualify/    company → lead (suppression + qualification)
   deliver/    digest.go, signal.go, pipedrive.go
@@ -94,6 +98,44 @@ production run.
 
 ---
 
+## Live deployment (VPS `vps-7be86863` = this host; as of 2026-07-01)
+
+Dev checkout is `/home/hrkono/projects/lead-engine`; **prod is a separate checkout
+at `/opt/lead-engine`** on the same host. Deploy = build here, install the binary
+there (no scp needed).
+
+| Thing | Location |
+|---|---|
+| Prod binary | `/opt/lead-engine/bin/lead-engine` (backups `lead-engine.bak-*`) |
+| Cron | `0 5 * * *` → `run --config /etc/lead-engine/config.toml`; log `/var/log/lead-engine/run.log` |
+| Config — secrets, chmod 600 (**do not read/commit**) | `/etc/lead-engine/config.toml` |
+| Store (WAL) | `/opt/lead-engine/data/leads.db` |
+| Signal | signal-cli-rest-api `http://127.0.0.1:8080`, bot `+48515019405`, one group `CzarekHRBRANDSELL` (sales channel) |
+| gov (cbop) export / DB | `/opt/gov_api/exports/raw-leads-cbop-latest.json` / `/opt/gov_api/gov_leads.db` |
+| olx export / DB | `/opt/olx-printing-press/data/exports/raw-leads-olx-latest.json` / `/opt/olx-printing-press/data/olx_jobs.db` |
+
+Deploy: `go build -o bin/lead-engine ./cmd/lead-engine` → backup + install to
+`/opt/lead-engine/bin/`. `migrate()` ALTERs apply on the next `Open` (05:00 cron).
+
+**Run timing**: ~4–5 h end-to-end; the **OLX scrape dominates (~3–4.5 h)**,
+`resolve-nip` ~30 min, `enrich` ~2 min (one-time backfills longer). On slow-OLX
+days the digest lands mid-morning, not before the workday.
+
+**Gotchas learned live (2026-07-01):**
+- `resolve-nip` retries `unresolved` companies with **paid** BizRaport calls
+  **every run** (~1000+ PLN/day during the trial; *not* cached). **Never trigger
+  an off-cycle `run`** to test/backfill — no flag skips the paid stage.
+- REGON's free API does **not** publish employment counts → `headcount` stays
+  empty and `👥 Zatrudnienie` never renders. Not a bug.
+
+**Pending follow-up (one contract-seam PR, base on `main`):** surface the OLX
+listing URL (all `jobs.url` populated; OLX has no phone/email) **and** sweep the
+whole raw CBOP offer for dropped sales data (esp. `contactPerson` — captured
+443/666 but omitted by gov's `export_raw_leads`; plus a concatenated-email bug).
+Both add per-record triggers via the same contract change.
+
+---
+
 ## The raw-leads contract (the seam between scrapers and orchestrator)
 
 `internal/contract/contract.go` defines `contractVersion: 1`, `source` is
@@ -122,17 +164,21 @@ applied idempotently on `Open` via `CREATE TABLE IF NOT EXISTS`.
 
 - **`companies.nip_status`**: `pending` → `verified` (has NIP) → `unresolved`.
   Only `verified` companies are enriched and pushed to Pipedrive.
-- `companies.board_members` is a JSON array `[{"name":..,"role":..}]`.
+- `companies.board_members` is a JSON array `[{"name":..,"role":..}]` (stored,
+  **not delivered**). Business columns `headcount` (usually empty — REGON does not
+  publish it), `share_capital`, `registered_since` were added post-deploy via
+  `migrate()`.
 - `leads.score` is NULL for OLX-only leads; `status` is `new | delivered | suppressed`.
 - `api_cache` is the generic cache for REGON/KRS/BizRaport (keyed `api`+`identifier`;
   resolve uses a 90-day TTL). `spend_log` backs the BizRaport daily cap.
 - Single writer: `db.SetMaxOpenConns(1)` to avoid `SQLITE_BUSY`. Don't raise this
   without adding app-level lock-retry handling.
 
-**Schema changes**: edit the `schema` const. Because it's `IF NOT EXISTS`-only,
-adding a column to an existing table on a live DB requires an explicit
-`ALTER TABLE` migration — `CREATE TABLE IF NOT EXISTS` will not migrate an
-already-created table.
+**Schema changes**: edit the `schema` const (for fresh DBs) **and** add an
+idempotent `ALTER TABLE` to `migrate()` in `store.go` (for the live DB) — the
+schema is `IF NOT EXISTS`-only, so `CREATE TABLE IF NOT EXISTS` will not add a
+column to an already-created table. `migrate()` runs on `Open`, guarded by
+`PRAGMA table_info`.
 
 ---
 
@@ -151,8 +197,9 @@ already-created table.
   search. Free APIs (REGON, KRS) have no cap but must be cached in `api_cache`.
 - **Identity rules**: NIP is canonical. NIP-less name matching can mis-merge
   similarly-named businesses — an accepted trade-off for OLX. Unresolved-NIP
-  (OLX) leads are delivered to Signal flagged unverified but **never** pushed to
-  Pipedrive and **never** registry-enriched.
+  (OLX) leads are **never** pushed to Pipedrive and **never** registry-enriched;
+  they ship to Signal only if they carry a trigger (phone/email) — triggerless
+  ones are suppressed in `deliverStage`.
 - **`--dry-run` must have zero external side effects** and must not mutate lead
   state — keep it that way.
 - **`ScraperStage` execs the binary directly (no shell).** `cmd[0]` is the binary,
